@@ -2,11 +2,14 @@ import os.path
 import re
 
 import yaml
+from telegram.constants import ChatAction
 from telegram.ext import CallbackContext
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from google_play_scraper import app
 
 from config_values import CheckIntervalResult
+from modules.job_queue import job_queue_logger, scheduled_send_message
+from modules.settings import delete_message
 
 
 async def is_allowed_user(user_id: int, users: dict) -> bool:
@@ -28,7 +31,7 @@ async def check_interval(interval: str):
     pattern = r"(?:(\d+)m)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)min)?(?:(\d+)s)?"
 
     if not (match := re.match(pattern, interval)):
-        return CheckIntervalResult.INVALID_FORMAT
+        return CheckIntervalResult.INVALID_FORMAT, None
 
     months = match.group(1)
     days = match.group(2)
@@ -37,18 +40,19 @@ async def check_interval(interval: str):
     seconds = match.group(5)
 
     if not all([months, days, hours, minutes, seconds]):
-        return CheckIntervalResult.MISSING_VALUES
+        return CheckIntervalResult.MISSING_VALUES, None
 
     months, days, hours, minutes, seconds = [int(value) for value in [months, days, hours, minutes, seconds]]
 
     if any(value < 0 for value in [months, days, hours, minutes, seconds]):
-        return CheckIntervalResult.NON_POSITIVE_VALUES
+        return CheckIntervalResult.NON_POSITIVE_VALUES, None
 
-    return CheckIntervalResult.SUCCESS
+    return CheckIntervalResult.SUCCESS, [months, days, hours, minutes, seconds]
 
 
 async def initialize_chat_data(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     cd = context.chat_data
     bd = context.bot_data
     """
@@ -94,12 +98,25 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
         }
     """
     if update.callback_query:
+        await delete_message(context=context, chat_id=chat_id, message_id=update.effective_message.id)
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+
         if update.callback_query.data == "load_first_boot_configuration_no":
             del cd['first_boot']
         else:
             # carica la configurazione presa dal file 'first_boot.yml'
+            outcome, values = await check_interval(cd['first_boot']['settings']['default_interval'])
 
-            pass
+            if outcome != CheckIntervalResult.SUCCESS:
+                text = ("❌ <b>Configuration File Error</b>\n\n"
+                       "🔹 C'è un errore nel formato dell'intervallo indicato. "
+                       "La configurazione verrà ignorata.")
+                await context.job_queue.run_once(callback=scheduled_send_message,
+                                                 data={
+                                                     'chat_id': chat_id,
+                                                     'text': text
+                                                 },
+                                                 when=2)
 
 
     if user_id == bd["users"]["owner"]:
@@ -163,7 +180,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                     ]
                 ]
 
-                await context.bot.send_message(text=text, chat_id=update.effective_chat.id,
+                await context.bot.send_message(text=text, chat_id=chat_id,
                                                reply_markup=InlineKeyboardMarkup(keyboard),
                                                parse_mode='HTML',
                                                disable_web_page_preview=True)

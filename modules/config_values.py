@@ -11,9 +11,9 @@ class CheckIntervalResult:
     def get_result_message(code):
         messages = {
             CheckIntervalResult.SUCCESS: 'Success',
-            CheckIntervalResult.INVALID_FORMAT: 'Non hai usato il formato indicato.',
-            CheckIntervalResult.MISSING_VALUES: 'Specifica tutti i valori, anche se nulli.',
-            CheckIntervalResult.NON_POSITIVE_VALUES: 'Tutti i valori devono essere positivi.'
+            CheckIntervalResult.INVALID_FORMAT: '❌ Non hai usato il formato indicato.',
+            CheckIntervalResult.MISSING_VALUES: '❌ Specifica tutti i valori, anche se nulli.',
+            CheckIntervalResult.NON_POSITIVE_VALUES: '❌ Tutti i valori devono essere positivi.'
         }
         return messages.get(code)
 
