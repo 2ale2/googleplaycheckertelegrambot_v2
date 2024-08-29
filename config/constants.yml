@@ -1,0 +1,65 @@
+---
+permissions:
+  - "can_manage_backups"
+texts:
+  overall_functioning:
+    owner: None
+    admin: "💡 <b>Informazioni Generali</b>\n\nSono in grado di controllare periodicamente la presenza di aggiornamenti 
+    relativi ad applicazioni sul Play Store. Per funzionare, ho bisogno di tre informazioni:\n  1. il <u>link 
+    all'applicazione</u> che ti interessa;\n  2. l'<u>intervallo di controllo</u> tra due check;\n  3. in quali 
+    <u>condizioni</u> vuoi ricevere il messaggio.\n\nℹ <b>Verrai guidato in ogni passaggio.</b> In caso di problemi, 
+    contatta @AleLntr.\n\n1️⃣ <b>Al Primo Avvio</b>\nVengono settate le impostazioni di default, utili al mio 
+    funzionamento. Da ora, <b>tutti</b> i dati verranno salvati all'interno di alcune variabili permanenti. I valori 
+    contenuti all'interno di queste variabili saranno salvati, ad intervalli regolari, all'interno di un file chiamato 
+    <code>persistence</code> (è un file senza estensione contenente caratteri non leggibili).\n\n⚠️ Il salvataggio di 
+    tali informazioni sul file <code>persistence</code> serve per garantire che i dati non vengano persi in caso di 
+    arresti anomali dello script del bot. <u>La rimozione di tale file, pertanto, comporta la cancellazione della sua 
+    memoria</u> e, in tal caso, il bot dovrà essere reimpostato, come ti accingi a fare.\n\nI valori che stai per 
+    impostare costituiscono le <b>impostazioni di default</b>: l'<b>intervallo di check di default</b> – se non viene 
+    impostato per una certa applicazione – e il <b>parametro sulla condizione di invio del messaggio</b>, di default, 
+    che specifica se il messaggio andrà mandato solo se viene rilevato un aggiornamento oppure ad ogni controllo.\n\n2️⃣ 
+    <b>Funzioni</b> – Il bot consente alcune semplici operazioni, tra cui:\n\n🔸 <b>Aggiunta di applicazioni da 
+    monitorare</b>\nL'aggiunta di un'applicazione può essere fatta tramite il passaggio del link al Play Store.\n\n
+    🔸 <b>Settaggio delle applicazioni</b>\nQuando un'applicazione viene aggiunta, è richiesta l'impostazione di 
+    controllo.\n\n🔸 <b>Modifica delle impostazioni di app già aggiunte</b>\nDa un apposito menu, sarà possibile 
+    cambiare le impostazioni relative ad un'applicazione precedentemente aggiunta.\n\n🔸 <b>Sospensione o rimozione di 
+    un'applicazione</b>\nPotrai anche sospendere gli aggiornamenti e riattivarli in un secondo momento, o rimuovere 
+    un'applicazione dall'elenco di quelle tracciate.\n\n🔸 <b>Lista delle applicazioni aggiunte</b>\nPotrai 
+    visualizzare tutti i dettagli delle applicazioni che hai aggiunto (sospese e non).\n\n🔸 <b>Modifica delle 
+    impostazioni di Default</b>\nTutti i valori possono essere cambiati tramite le impostazioni.\n\n🔸 <b>Lista degli 
+    ultimi 10 controlli effettuati</b>\nPuoi visualizzare una lista degli ultimi check fatti, assieme ai dettagli su 
+    eventuali aggiornamenti.\n\n🆘 In caso di problemi, controlla i file di log presenti nella cartella del progetto in 
+    <code>/misc/logs</code> e contatta @AleLntr.\n\n➡ <b>Nota Importante</b> – Per consentire al bot di inviarti 
+    messaggi, ricordati di mantenere la chat attiva mantenendovi almeno un messaggio all'interno, altrimenti il bot 
+    non ti potrà scrivere.\n\n⚠ Tieni inoltre presente che Telegram impone un limite di 30 messaggi al secondo, quindi 
+    fai attenzione a non eccedere tale limite."
+    allowed_users: "💡 <b>Informazioni Generali</b>\n\n⚠️ <u>L'admin @Linxay ha aggiunto il tuo ID alla whitelist</u>.
+    Tieni presente che <b>può rimuoverlo</b> in qualunque momento o modificare i tuoi permessi.\n\nℹ️ Sono in grado di 
+    controllare periodicamente la presenza di aggiornamenti per tutte le applicazioni sul Play Store. Per funzionare, 
+    ho bisogno di tre informazioni:\n  1. Il <u>link all’applicazione</u> che ti interessa;\n  2. L’<u>intervallo di 
+    controllo</u> tra due check;\n  3. In quali <u>condizioni</u> vuoi ricevere il messaggio.\n\n👁‍🗨 <b>Verrai guidato 
+    in ogni passaggio</b>. In caso di problemi, contatta @AleLntr.\n\n1️⃣ <b>Al Primo Avvio</b>\nVengono settate le 
+    impostazioni di default, utili al mio funzionamento. Da ora, <b>tutti</b> i dati verranno salvati all’interno di 
+    variabili permanenti. I valori contenuti all’interno di queste variabili saranno salvati, ad intervalli regolari, 
+    all’interno di un file criptato. Questo meccanismo di salvataggio serve ad assicurare il mantenimento delle 
+    informazioni in caso di arresti anomali.\n\nI valori che stai per impostare costituiscono le <b>impostazioni di 
+    default</b>: l’intervallo di check di default – se non viene impostato per una certa applicazione – e il parametro 
+    sulla <b>condizione di invio del messaggio</b>, di default, che specifica se il messaggio andrà mandato solo se 
+    viene rilevato un aggiornamento oppure ad ogni controllo.\n\n<b>2️⃣ Funzioni</b> – Il bot consente alcune semplici 
+    operazioni, tra cui:\n\n<b>🔸 Aggiunta di applicazioni da monitorare</b> – L’aggiunta di un’applicazione può essere 
+    fatta tramite il passaggio del link al Play Store.\n\n<b>🔸 Settaggio delle applicazioni</b> – Quando 
+    un’applicazione viene aggiunta, è richiesta l’impostazione dei valori di controllo.\n\n<b>🔸 Modifica delle 
+    impostazioni di app già aggiunte</b> – Da un apposito menu, sarà possibile cambiare le impostazioni relative ad 
+    un’applicazione precedentemente aggiunta.\n\n<b>🔸 Sospensione o rimozione di un’applicazione</b> – Potrai anche 
+    sospendere gli aggiornamenti e riattivarli in un secondo momento, o rimuovere un’applicazione dall’elenco di quelle 
+    tracciate.\n\n<b>🔸 Lista delle applicazioni aggiunte</b> – Potrai visualizzare tutti i dettagli delle applicazioni 
+    che hai  aggiunto (se ce ne sono).\n\n<b>🔸 Modifica delle impostazioni di Default</b> – Tutti i valori possono 
+    essere cambiati tramite le impostazioni.\n\n<b>🔸 Lista degli ultimi 10 controlli effettuati</b> – Puoi visualizzare
+     una lista degli ultimi check fatti, assieme ai dettagli su eventuali aggiornamenti.\n\n<b>➕ Permessi Aggiuntivi</b>
+      – Queste funzioni possono essere concesse e modificate da @Linxay.\n\n<b>🔹 Backup e Ripristino</b> – Potrai 
+    eseguire il backup di tutti i tuoi dati. Successivamente, in caso di perdita dei dati per errori imprevisti o 
+    funzionamenti indesiderati, potrai ripristinarlo.\n\n<b>🆘 In caso di problemi, contatta @Linxay, l’admin principale
+    , o @AleLntr, il creatore di questo bot.</b>\n\n<b>ℹ Nota importante</b> – Per consentire ai bot di inviarti 
+    messaggi, ricordati di mantenere la chat attiva mantenendo almeno un messaggio all’interno, altrimenti il bot non 
+    ti potrà scrivere.\n\n<b>⚠️ Tieni inoltre presente che Telegram impone un limite di 30 messaggi al secondo, quindi 
+    fai attenzione a non eccedere tale limite.</b>\n"

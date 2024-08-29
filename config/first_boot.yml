@@ -1,0 +1,14 @@
+---
+settings:
+  default_interval: 0m0d2h15min10s
+  default_send_on_check: False
+
+apps:
+  1:
+    link: "https://play.google.com/store/apps/details?id=com.roblox.client&hl=it"
+    interval: DEFAULT
+    send_on_check: DEFAULT
+  2:
+    link: "https://play.google.com/store/apps/details?id=com.revolut.revolut&hl=it"
+    interval: 0m0d2h15min10s
+    send_on_check: True

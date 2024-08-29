@@ -1,0 +1,6 @@
+---
+allowed_users:
+  6784285433:
+    can_manage_backups: True
+  7233636327:
+    can_manage_backups: True
