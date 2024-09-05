@@ -13,8 +13,8 @@ from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ConversationHandler, ContextTypes
 
 import job_queue
-from config import ConversationState
-from utils import check_dict_keys
+from config_values import ConversationState
+from utils import check_dict_keys, delete_message
 from decorators import send_action
 
 settings_logger = logging.getLogger("settings_logger")
@@ -1612,14 +1612,6 @@ async def delete_extemporary_message(update: Update, context: CallbackContext):
                                          message_id=int(update.callback_query.data.split(" ")[1]))
     except telegram.error.BadRequest as e:
         bot_logger.info(f"Not able to delete message: {e}")
-        pass
-
-
-async def delete_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
-    try:
-        await context.bot.delete_message(chat_id=chat_id,
-                                         message_id=message_id)
-    except telegram.error.BadRequest:
         pass
 
 

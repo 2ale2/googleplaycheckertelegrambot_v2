@@ -1,2 +1,1 @@
-User 7233636327 – Starting to set default settings.
-User 7233636327 – Starting to set default settings.
+2024-09-05 21:49:06,579 - bot_logger - WARNING - First Boot Configuration – Syntax Error: CheckResult(field=default_interval, code=-2, message=Valori mancanti in 'default_interval'). Check the file.

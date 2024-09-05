@@ -1,21 +1,90 @@
 from enum import Enum
-import re
 
-class CheckIntervalResult:
-    SUCCESS = 1
+
+class ValidateResult:
+    def __init__(self, field, code, message):
+        self.field = field
+        self.code = code
+        self.message = message
+
+    def get_code(self):
+        return self.code
+
+    def get_message(self):
+        return self.message
+
+    def __repr__(self):
+        return f'CheckResult(field={self.field}, code={self.code}, message={self.message})'
+
+
+class ValidateIntervalOutcome(ValidateResult):
+    SUCCESS = 0
     INVALID_FORMAT = -1
     MISSING_VALUES = -2
     NON_POSITIVE_VALUES = -3
 
     @staticmethod
-    def get_result_message(code):
+    def get_outcome(code, field='default_interval'):
+        # noinspection PyShadowingNames
         messages = {
-            CheckIntervalResult.SUCCESS: 'Success',
-            CheckIntervalResult.INVALID_FORMAT: '❌ Non hai usato il formato indicato.',
-            CheckIntervalResult.MISSING_VALUES: '❌ Specifica tutti i valori, anche se nulli.',
-            CheckIntervalResult.NON_POSITIVE_VALUES: '❌ Tutti i valori devono essere positivi.'
+            ValidateIntervalOutcome.SUCCESS: f"Valore '{field}' valido",
+            ValidateIntervalOutcome.INVALID_FORMAT: f"Usa il formato indicato per '{field}'",
+            ValidateIntervalOutcome.MISSING_VALUES: f"Valori mancanti in '{field}'",
+            ValidateIntervalOutcome.NON_POSITIVE_VALUES: f"Valori negativi in '{field}'",
         }
-        return messages.get(code)
+        message = messages.get(code, 'Errore Sconosciuto')
+        return ValidateResult(field, code, message)
+
+
+class ValidateSendOnCheckOutcome(ValidateResult):
+    SUCCESS = 0
+    INVALID_TYPE = -4
+
+    @staticmethod
+    def get_outcome(code, field='default_send_on_check'):
+        # noinspection PyShadowingNames
+        messages = {
+            ValidateSendOnCheckOutcome.SUCCESS: f"Valore '{field}' valido",
+            ValidateSendOnCheckOutcome.INVALID_TYPE: f"'{field}' deve essere un booleano"
+        }
+        message = messages.get(code, 'Errore Sconosciuto')
+        return ValidateResult(field, code, message)
+
+
+class ValidateAppConfiguration(ValidateResult):
+    SUCCESS = 0
+    INVALID_TYPE = -5
+    MISSING_VALUES = -6
+    INVALID_LINK = -7
+    INTERVAL_INVALID_FORMAT = ValidateIntervalOutcome.INVALID_FORMAT
+    INTERVAL_MISSING_VALUES = ValidateIntervalOutcome.MISSING_VALUES
+    INTERVAL_NON_POSITIVE_VALUES = ValidateIntervalOutcome.NON_POSITIVE_VALUES
+    SEND_ON_CHECK_INVALID_TYPE = ValidateSendOnCheckOutcome.INVALID_TYPE
+
+    @staticmethod
+    def from_interval_outcome(code):
+        if code == ValidateAppConfiguration.INTERVAL_INVALID_FORMAT:
+            return ValidateAppConfiguration.INTERVAL_INVALID_FORMAT
+        if code == ValidateAppConfiguration.INTERVAL_MISSING_VALUES:
+            return ValidateAppConfiguration.INTERVAL_MISSING_VALUES
+        if code == ValidateAppConfiguration.INTERVAL_NON_POSITIVE_VALUES:
+            return ValidateAppConfiguration.INTERVAL_NON_POSITIVE_VALUES
+
+    @staticmethod
+    def get_outcome(code):
+        # noinspection PyShadowingNames
+        messages = {
+            ValidateAppConfiguration.SUCCESS: "App valida",
+            ValidateAppConfiguration.INVALID_TYPE: "L'app deve essere un dizionario",
+            ValidateAppConfiguration.MISSING_VALUES: "Il dizionario deve contenere 'link', 'interval' e 'send_on_check'",
+            ValidateAppConfiguration.INVALID_LINK: "'link' non valido",
+            ValidateAppConfiguration.INTERVAL_INVALID_FORMAT: "'interval' ha un formato errato",
+            ValidateAppConfiguration.INTERVAL_MISSING_VALUES: "'interval' ha valori mancanti",
+            ValidateAppConfiguration.INTERVAL_NON_POSITIVE_VALUES: "'interval' ha valori negativi",
+            ValidateAppConfiguration.SEND_ON_CHECK_INVALID_TYPE: "'send_on_check' deve essere un booleano"
+        }
+        message = messages.get(code, 'Errore Sconosciuto')
+        return ValidateResult('app', code, message)
 
 
 class ConversationState(Enum):

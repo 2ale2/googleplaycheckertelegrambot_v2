@@ -4,6 +4,7 @@ import os
 
 import pytz
 import yaml
+import utils
 from logging import handlers
 
 import telegram.error
@@ -38,8 +39,10 @@ logging.basicConfig(
 
 bot_logger = logging.getLogger("bot_logger")
 bot_logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler = handlers.RotatingFileHandler(filename="logs/main.log",
                                             maxBytes=1024, backupCount=1)
+file_handler.setFormatter(formatter)
 bot_logger.addHandler(file_handler)
 
 load_dotenv()
@@ -104,9 +107,9 @@ async def set_data(appl: Application) -> None:
 
     # class of app.chat_data: mappingproxy(defaultdict(<class 'dict'>, {}))
     # noinspection PyUnresolvedReferences
-    for cd in app.chat_data:
+    for cd in appl.chat_data:
         # noinspection PyUnresolvedReferences
-        await job_queue.reschedule(appl, app.chat_data[cd])
+        await job_queue.reschedule(appl, appl.chat_data[cd])
 
 
 
@@ -126,7 +129,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
 
     if not (cd := context.chat_data):
-        await initialize_chat_data(update, context)
+        return await initialize_chat_data(update, context)
 
     await check_dict_keys(cd, ["user_type", "permissions", "first_boot"])
     await check_dict_keys(cd["permissions"], context.bot_data["settings"]["permissions"])
@@ -437,7 +440,7 @@ def main():
     appl.add_handler(conv_handler1)
     appl.add_handler(conv_handler2)
 
-    appl.add_handler(CallbackQueryHandler(pattern="^load_first_boot_configuration_.+$", callback=initialize_chat_data))
+    appl.add_handler(CallbackQueryHandler(pattern="^load_first_boot_configuration_.+$", callback=utils.first_boot_configuration))
 
     appl.add_handler(CallbackQueryHandler(pattern="^suspend_app.+$", callback=settings.suspend_app))
     appl.add_handler(CallbackQueryHandler(pattern="^delete_message.+$",
