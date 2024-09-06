@@ -12,7 +12,3 @@ apps:
     link: "https://play.google.com/store/apps/details?id=com.revolut.revolut&hl=it"
     interval: 0m0d2h15min10s
     send_on_check: True
-  3:
-    link: "https://play.google.com/store/apps/details?id=com.revolut.revolut&hl=it"
-    interval: DEFAULT
-    send_on_check: False

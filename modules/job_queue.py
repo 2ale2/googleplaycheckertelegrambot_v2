@@ -265,39 +265,39 @@ async def reschedule(ap: Application, cd: dict):
             try:
                 if i["next_check"] - datetime.datetime.now(pytz.timezone('Europe/Rome')) < datetime.timedelta(0):
                     ap.job_queue.run_once(callback=scheduled_app_check,
-                                           data={
-                                               "app_id": i["app_id"],
-                                               "app_link": i["app_link"],
-                                               "app_index": a
-                                           },
-                                           when=1,
-                                           name=i["app_name"])
+                                          data={
+                                              "app_id": i["app_id"],
+                                              "app_link": i["app_link"],
+                                              "app_index": a
+                                          },
+                                          when=1,
+                                          name=i["app_name"])
                     ap.job_queue.run_repeating(callback=scheduled_app_check,
-                                                interval=i["check_interval"]["timedelta"],
-                                                data={
-                                                    "app_id": i["app_id"],
-                                                    "app_link": i["app_link"],
-                                                    "app_index": a
-                                                },
-                                                name=i["app_name"])
+                                               interval=i["check_interval"]["timedelta"],
+                                               data={
+                                                   "app_id": i["app_id"],
+                                                   "app_link": i["app_link"],
+                                                   "app_index": a
+                                               },
+                                               name=i["app_name"])
                 else:
                     ap.job_queue.run_once(callback=scheduled_app_check,
-                                           data={
-                                               "app_id": i["app_id"],
-                                               "app_link": i["app_link"],
-                                               "app_index": a
-                                           },
-                                           when=i["next_check"],
-                                           name=i["app_name"])
+                                          data={
+                                              "app_id": i["app_id"],
+                                              "app_link": i["app_link"],
+                                              "app_index": a
+                                          },
+                                          when=i["next_check"],
+                                          name=i["app_name"])
                     ap.job_queue.run_repeating(callback=scheduled_app_check,
-                                                interval=i["check_interval"]["timedelta"],
-                                                data={
-                                                    "app_id": i["app_id"],
-                                                    "app_link": i["app_link"],
-                                                    "app_index": a
-                                                },
-                                                first=i["next_check"] + i["check_interval"]["timedelta"],
-                                                name=i["app_name"])
+                                               interval=i["check_interval"]["timedelta"],
+                                               data={
+                                                   "app_id": i["app_id"],
+                                                   "app_link": i["app_link"],
+                                                   "app_index": a
+                                               },
+                                               first=i["next_check"] + i["check_interval"]["timedelta"],
+                                               name=i["app_name"])
             except KeyError:
                 li.append(a)
 

@@ -82,7 +82,8 @@ async def set_data(appl: Application) -> None:
     """
 
     if not os.path.isfile("config/constants.yml"):
-        raise Exception("Missing file 'config/constants.yml' - Create inside 'check_app_update_v2/config/constants.yml'")
+        raise Exception(
+            "Missing file 'config/constants.yml' - Create inside 'check_app_update_v2/config/constants.yml'")
 
     # controllo chiavi
     if "settings" not in (bd := appl.bot_data):
@@ -91,7 +92,7 @@ async def set_data(appl: Application) -> None:
             "permissions": []
         }
 
-    with open("config/constants.yml", "r") as f:
+    with open("config/constants.yml", "r", encoding='utf-8') as f:
         bd["settings"]["permissions"] = (data := yaml.safe_load(f))["permissions"]
         bd["settings"]["texts"] = data["texts"]
 
@@ -110,7 +111,6 @@ async def set_data(appl: Application) -> None:
     for cd in appl.chat_data:
         # noinspection PyUnresolvedReferences
         await job_queue.reschedule(appl, appl.chat_data[cd])
-
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -277,8 +277,8 @@ async def catch_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     persistence = PicklePersistence(filepath="config/persistence")
     appl = (ApplicationBuilder().token(os.getenv("BOT_TOKEN")).persistence(persistence).
-           defaults(Defaults(tzinfo=pytz.timezone('Europe/Rome'))).
-           post_init(set_data).build())
+            defaults(Defaults(tzinfo=pytz.timezone('Europe/Rome'))).
+            post_init(set_data).build())
 
     conv_handler1 = ConversationHandler(
         entry_points=[
@@ -383,7 +383,7 @@ def main():
         ],
         states={
             ConversationState.DELETE_APP_SELECT: [
-               MessageHandler(filters.TEXT, callback=settings.remove_app)
+                MessageHandler(filters.TEXT, callback=settings.remove_app)
             ],
             ConversationState.DELETE_APP_CONFIRM: [
                 CallbackQueryHandler(pattern="confirm_remove", callback=settings.remove_app),
@@ -401,6 +401,7 @@ def main():
         entry_points=[
             CallbackQueryHandler(pattern="settings", callback=settings.change_settings),
             CallbackQueryHandler(pattern="^default_setting_finished.+$", callback=send_menu),
+            CallbackQueryHandler(pattern="^first_configuration_completed.+$", callback=send_menu),
             CallbackQueryHandler(pattern="last_checks", callback=settings.list_last_checks)
         ],
         states={
@@ -440,11 +441,12 @@ def main():
     appl.add_handler(conv_handler1)
     appl.add_handler(conv_handler2)
 
-    appl.add_handler(CallbackQueryHandler(pattern="^load_first_boot_configuration_.+$", callback=utils.first_boot_configuration))
+    appl.add_handler(
+        CallbackQueryHandler(pattern="^load_first_boot_configuration_.+$", callback=utils.first_boot_configuration))
 
     appl.add_handler(CallbackQueryHandler(pattern="^suspend_app.+$", callback=settings.suspend_app))
     appl.add_handler(CallbackQueryHandler(pattern="^delete_message.+$",
-                                         callback=settings.delete_extemporary_message))
+                                          callback=settings.delete_extemporary_message))
     appl.add_handler(CallbackQueryHandler(pattern="^edit_from_job.+$", callback=settings.see_app_settings))
     appl.add_handler(set_app_conv_handler)
 

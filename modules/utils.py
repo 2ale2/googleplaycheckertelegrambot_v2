@@ -4,21 +4,25 @@ import re
 import yaml
 import logging
 import telegram
+from google_play_scraper.exceptions import NotFoundError
 
 from telegram.constants import ChatAction
-from telegram.ext import CallbackContext, ContextTypes
+from telegram.ext import CallbackContext, ContextTypes, ConversationHandler
 from telegram import Update, InlineKeyboardButton
 from google_play_scraper import app
+from datetime import datetime, timedelta
+from pytz import timezone
 
 from config_values import ValidateIntervalOutcome
 from modules.config_values import ValidateSendOnCheckOutcome, ValidateResult, ValidateAppConfiguration
-from modules.job_queue import scheduled_send_message
+import modules.job_queue as job_queue
 
 
 bot_logger = logging.getLogger("bot_logger")
 
+
 async def is_allowed_user(user_id: int, users: dict) -> bool:
-    await check_dict_keys(users, ["owner", "admin", "allowed"] )
+    await check_dict_keys(users, ["owner", "admin", "allowed"])
     return user_id == users["owner"] or user_id == users["admin"] or user_id in users["allowed"]
 
 
@@ -144,7 +148,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                         ]
                     ]
                     context.job_queue.run_once(
-                        callback=scheduled_send_message,
+                        callback=job_queue.scheduled_send_message,
                         data={
                             "text": "⚠️ <b>Syntax Error in First Boot Configuration File</b>\n\n"
                                     "🔸 C'è qualcosa che non va nel file <code>first_boot.yml</code>. Controlla il file "
@@ -185,7 +189,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                     ]
 
                     context.job_queue.run_once(
-                        callback=scheduled_send_message,
+                        callback=job_queue.scheduled_send_message,
                         data={
                             "text": text,
                             "chat_id": chat_id,
@@ -195,11 +199,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                     )
                 
                 
-async def validate_interval(interval: str, default_value: bool):
-    if default_value:
-        if interval == "DEFAULT":
-            return ValidateIntervalOutcome.SUCCESS, 'default'
-
+async def validate_interval(interval: str):
     pattern = r"(?:(\d+)m)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)min)?(?:(\d+)s)?"
 
     if not (match := re.match(pattern, interval)):
@@ -222,17 +222,24 @@ async def validate_interval(interval: str, default_value: bool):
     return ValidateIntervalOutcome.SUCCESS, [months, days, hours, minutes, seconds]
 
 
-async def validate_send_on_check(value, default_value: bool):
-    if default_value and not isinstance(value, bool):
-        return ValidateSendOnCheckOutcome.INVALID_TYPE
+async def parse_interval(interval: str):
+    ico, values = await validate_interval(interval)
 
-    if not default_value and (not isinstance(value, bool) and value != 'DEFAULT'):
+    if ico != ValidateIntervalOutcome.SUCCESS:
+        bot_logger.warning(f"Invalid interval {interval}")
+        return ico
+
+    return values
+
+
+async def validate_send_on_check(value):
+    if not isinstance(value, bool):
         return ValidateSendOnCheckOutcome.INVALID_TYPE
 
     return ValidateSendOnCheckOutcome.SUCCESS
 
 
-async def validate_app_config(app_config):
+async def validate_app_config(app_config, conf: dict):
     if not isinstance(app_config, dict):
         return ValidateAppConfiguration.INVALID_TYPE
 
@@ -243,25 +250,30 @@ async def validate_app_config(app_config):
         return ValidateAppConfiguration.INVALID_LINK
 
     if app_config["interval"] != 'DEFAULT':
-        aico, values = await validate_interval(app_config["interval"], False)
+        aico, values = await validate_interval(app_config["interval"])
         if aico != ValidateIntervalOutcome.SUCCESS:
             return ValidateAppConfiguration.from_interval_outcome(aico)
+    else:
+        app_config["interval"] = conf["settings"]["default_interval"]
 
-    if await validate_send_on_check(app_config["send_on_check"], False) != ValidateSendOnCheckOutcome.SUCCESS:
-        return ValidateAppConfiguration.SEND_ON_CHECK_INVALID_TYPE
+    if app_config["send_on_check"] != 'DEFAULT':
+        if await validate_send_on_check(app_config["send_on_check"]) != ValidateSendOnCheckOutcome.SUCCESS:
+            return ValidateAppConfiguration.SEND_ON_CHECK_INVALID_TYPE
+    else:
+        app_config["send_on_check"] = conf["settings"]["default_send_on_check"]
 
     return ValidateAppConfiguration.SUCCESS
 
 
 async def check_first_boot_configuration(conf: dict):
-    ico, values = await validate_interval(conf['settings']['default_interval'], True)
+    ico, values = await validate_interval(conf['settings']['default_interval'])
 
     if ico != ValidateIntervalOutcome.SUCCESS:
         ico = ValidateIntervalOutcome.get_outcome(ico)
         bot_logger.warning(f"First Boot Configuration – Syntax Error: {ico}. Check the file.")
         return ico
 
-    soco = await validate_send_on_check(conf['settings']['default_send_on_check'], True)
+    soco = await validate_send_on_check(conf['settings']['default_send_on_check'])
 
     if soco != ValidateSendOnCheckOutcome.SUCCESS:
         soco = ValidateSendOnCheckOutcome.get_outcome(soco)
@@ -269,7 +281,7 @@ async def check_first_boot_configuration(conf: dict):
         return soco
 
     for app_index in conf['apps']:
-        aco = await validate_app_config(conf['apps'][app_index])
+        aco = await validate_app_config(conf['apps'][app_index], conf)
         if aco != ValidateAppConfiguration.SUCCESS:
             aco = ValidateAppConfiguration.get_outcome(aco)
             bot_logger.warning(f"First Boot Configuration – Syntax Error for app #{app_index}: {aco}. Check the file.")
@@ -289,7 +301,66 @@ async def first_boot_configuration(update: Update, context: CallbackContext):
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     # carica la configurazione presa dal file 'first_boot.yml'
+    dci = cd["settings"]["default_check_interval"]
 
+    values = await parse_interval(cd["first_boot_configuration"]["settings"]["default_interval"])
+
+    if not isinstance(values, list) or len(values) != 5:
+        raise ValueError("Default interval must be a list of exaclty 5 non-negative integers.")
+
+    dci["input"]["months"] = values[0]
+    dci["input"]["days"] = values[1]
+    dci["input"]["hours"] = values[2]
+    dci["input"]["minutes"] = values[3]
+    dci["input"]["seconds"] = values[4]
+
+    dci["timedelta"] = timedelta(days=values[0]*30+values[1], hours=values[2], minutes=values[3], seconds=values[4])
+
+    cd["settings"]["default_send_on_check"] = cd["first_boot"]["settings"]["default_send_on_check"]
+
+    for app_index in (apps := cd["first_boot"]["apps"]):
+        try:
+            app_details = app(app_id=await get_app_id_from_link(apps[app_index]["link"]))
+        except NotFoundError as e:
+            raise ValueError(f"App with link '{apps[app_index]['link']}' not found: {e}")
+        else:
+            cd["apps"][len(cd["apps"])+1] = {
+                "app_name": app_details["title"],
+                "app_id": app_details["appId"],
+                "app_link": app_details["url"],
+                "current_version": app_details["version"],
+                "last_check_time": None,
+                "check_interval": cd["apps"][app_index]["interval"],
+                # "next_check_time" viene creato in 'schedule_job_and_send_settled_app_message
+                "send_on_check": cd["apps"][app_index]["send_on_check"]
+            }
+            await schedule_app_check(cd, False, update, context)
+
+    keyboard = [
+        [
+            InlineKeyboardButton(text="⏭ Procedi al Menu Principale", callback_data="first_configuration_completed")
+        ]
+    ]
+
+    await send_message_with_typing_action(data={
+        "chat_id": update.effective_chat.id,
+        "text": "✅ <b>First Boot Configuration Completed</b>\n\n"
+                "🔹 Tutte le impostazioni e le app sono state configurate correttamente.",
+        "keyboard": keyboard
+    }, context=context)
+
+    return ConversationHandler.END
+
+
+async def send_message_with_typing_action(data: dict, context: CallbackContext):
+    await check_dict_keys(data, ["chat_id", "text"])
+
+    await context.bot.send_chat_action(chat_id=data["chat_id"], action=ChatAction.TYPING)
+    context.job_queue.run_once(
+        callback=job_queue.scheduled_send_message,
+        data=data,
+        when=2
+    )
 
 
 async def delete_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int):
@@ -298,3 +369,101 @@ async def delete_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, messa
                                          message_id=message_id)
     except telegram.error.BadRequest:
         pass
+
+
+async def schedule_app_check(cd: dict, send_message: bool, update: Update, context: CallbackContext):
+    added = True if "editing" not in cd else False
+
+    if added:
+        ap = cd["apps"][len(context.bot_data["apps"])]
+    else:
+        index = cd["app_index_to_edit"]
+        ap = context.bot_data["apps"][index]
+        del cd["app_index_to_edit"]
+        del context.bot_data["editing"]
+
+    ap["next_check"] = {}
+    ap["next_check"] = datetime.now(timezone('Europe/Rome')) + ap["check_interval"]["timedelta"]
+
+    if not added:
+        jobs = context.job_queue.get_jobs_by_name(ap['title'])
+        if len(jobs) > 0:
+            for job in jobs:
+                job.schedule_removal()
+
+    # noinspection PyUnboundLocalVariable
+    context.job_queue.run_repeating(
+        callback=job_queue.scheduled_app_check,
+        interval=ap["check_interval"]["timedelta"],
+        chat_id=update.effective_chat.id,
+        name=ap['title'],
+        data={
+            "app_link": ap["app_link"],
+            "appId": ap["appId"],
+            "app_index": str(len(context.bot_data["apps"])) if added else index
+        }
+    )
+
+    if send_message:
+        text = (f"☑️ <b>App Settled Successfully</b>\n\n"
+                f"🔹<u>Check Interval</u> ➡ "
+                f"<code>"
+                f"{ap['check_interval']['input']['months']}m"
+                f"{ap['check_interval']['input']['days']}d"
+                f"{ap['check_interval']['input']['hours']}h"
+                f"{ap['check_interval']['input']['minutes']}"
+                f"min"
+                f"{ap['check_interval']['input']['seconds']}s"
+                f"</code>\n"
+                f"🔹<u>Send On Check</u> ➡ "
+                f"<code>{ap['send_on_check']}</code>\n\n"
+                f"🔸 <u>Next Check</u> ➡ <code>{ap['next_check'].strftime('%d %B %Y – %H:%M:%S')}</code>"
+                f"\n\n")
+
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id,
+                                           action=ChatAction.TYPING)
+
+        if added:
+            button = InlineKeyboardButton(text="➕ Aggiungi Altra App", callback_data="add_app")
+        else:
+            button = InlineKeyboardButton(text="✏ Modifica Altra App", callback_data="edit_app")
+
+        keyboard = [
+            [
+                button,
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="back_to_settings_settled")
+            ]
+        ] if "from_check" not in cd else [
+            [
+                InlineKeyboardButton(text="🗑 Chiudi", callback_data="delete_message {}")
+            ]
+        ]
+
+        data = {
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "message_id": update.effective_message.id,
+            "keyboard": keyboard
+        } if "from_check" not in cd else {
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "message_id": update.effective_message.id,
+            "keyboard": keyboard,
+            "close_button": [1, 1]
+        }
+
+        if "from_check" in cd:
+            del cd["from_check"]
+
+        context.job_queue.run_once(callback=job_queue.scheduled_send_message,
+                                   data=data,
+                                   when=1.5)
+
+    bot_logger.info(f"Repeating Job for app {ap['title']} Scheduled Successfully "
+                    f"– Next Check at {(datetime.now(timezone('Europe/Rome'))
+                                        + ap['check_interval']['timedelta']).strftime('%d %b %Y - %H:%M:%S')}")
+
+    if "editing" in context.bot_data:
+        del context.bot_data["editing"]
+
+    return ConversationHandler.END

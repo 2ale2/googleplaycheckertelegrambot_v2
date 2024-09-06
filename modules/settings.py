@@ -14,7 +14,7 @@ from telegram.ext import CallbackContext, ConversationHandler, ContextTypes
 
 import job_queue
 from config_values import ConversationState
-from utils import check_dict_keys, delete_message
+from utils import check_dict_keys, delete_message, schedule_app_check
 from decorators import send_action
 
 settings_logger = logging.getLogger("settings_logger")
@@ -819,14 +819,14 @@ async def set_app(update: Update, context: CallbackContext):
 
         del context.chat_data["setting_app"]
 
-        return await schedule_job_and_send_settled_app_message(update, context)
+        return await schedule_app_check(update, context)
 
     else:
         if update.callback_query and update.callback_query.data == "edit_set_default_values":
             index = context.chat_data["app_index_to_edit"]
             context.bot_data["apps"][index]["check_interval"] = context.bot_data["settings"]["default_check_interval"]
             context.bot_data["apps"][index]["send_on_check"] = context.bot_data["settings"]["default_send_on_check"]
-            return await schedule_job_and_send_settled_app_message(update, context)
+            return await schedule_app_check(update, context)
 
     if not update.callback_query:
         try:
@@ -975,7 +975,7 @@ async def set_app(update: Update, context: CallbackContext):
         if "setting_app" in context.chat_data:
             del context.chat_data["setting_app"]
 
-    return await schedule_job_and_send_settled_app_message(update, context)
+    return await schedule_app_check(update, context)
 
 
 async def edit_app(update: Update, context: CallbackContext):
@@ -1478,103 +1478,6 @@ async def parse_conversation_message(context: CallbackContext, data: dict):
                                                         message_id=message.id,
                                                         reply_markup=InlineKeyboardMarkup(keyboard))
         return message.id
-
-
-async def schedule_job_and_send_settled_app_message(update: Update, context: CallbackContext):
-    added = True if "editing" not in context.bot_data else False
-
-    if added:
-        ap = context.bot_data["apps"][str(len(context.bot_data["apps"]))]
-    else:
-        index = context.chat_data["app_index_to_edit"]
-        ap = context.bot_data["apps"][index]
-        del context.chat_data["app_index_to_edit"]
-        del context.bot_data["editing"]
-
-    ap["next_check"] = {}
-    ap["next_check"] = datetime.now(pytz.timezone('Europe/Rome')) + ap["check_interval"]["timedelta"]
-
-    text = (f"☑️ <b>App Settled Successfully</b>\n\n"
-            f"🔹<u>Check Interval</u> ➡ "
-            f"<code>"
-            f"{ap['check_interval']['input']['months']}m"
-            f"{ap['check_interval']['input']['days']}d"
-            f"{ap['check_interval']['input']['hours']}h"
-            f"{ap['check_interval']['input']['minutes']}"
-            f"min"
-            f"{ap['check_interval']['input']['seconds']}s"
-            f"</code>\n"
-            f"🔹<u>Send On Check</u> ➡ "
-            f"<code>{ap['send_on_check']}</code>\n\n"
-            f"🔸 <u>Next Check</u> ➡ <code>{ap['next_check'].strftime('%d %B %Y – %H:%M:%S')}</code>"
-            f"\n\n")
-
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id,
-                                       action=ChatAction.TYPING)
-
-    if added:
-        button = InlineKeyboardButton(text="➕ Aggiungi Altra App", callback_data="add_app")
-    else:
-        button = InlineKeyboardButton(text="✏ Modifica Altra App", callback_data="edit_app")
-
-    keyboard = [
-        [
-            button,
-            InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="back_to_settings_settled")
-        ]
-    ] if "from_check" not in context.chat_data else [
-        [
-            InlineKeyboardButton(text="🗑 Chiudi", callback_data="delete_message {}")
-        ]
-    ]
-
-    data = {
-        "chat_id": update.effective_chat.id,
-        "text": text,
-        "message_id": update.effective_message.id,
-        "keyboard": keyboard
-    } if "from_check" not in context.chat_data else {
-        "chat_id": update.effective_chat.id,
-        "text": text,
-        "message_id": update.effective_message.id,
-        "keyboard": keyboard,
-        "close_button": [1, 1]
-    }
-
-    if "from_check" in context.chat_data:
-        del context.chat_data["from_check"]
-
-    context.job_queue.run_once(callback=job_queue.scheduled_send_message,
-                               data=data,
-                               when=1.5)
-
-    if not added:
-        jobs = context.job_queue.get_jobs_by_name(ap['title'])
-        if len(jobs) > 0:
-            for job in jobs:
-                job.schedule_removal()
-
-    # noinspection PyUnboundLocalVariable
-    context.job_queue.run_repeating(
-        callback=job_queue.scheduled_app_check,
-        interval=ap["check_interval"]["timedelta"],
-        chat_id=update.effective_chat.id,
-        name=ap['title'],
-        data={
-            "app_link": ap["app_link"],
-            "appId": ap["appId"],
-            "app_index": str(len(context.bot_data["apps"])) if added else index
-        }
-    )
-
-    bot_logger.info(f"Repeating Job for app {ap['title']} Scheduled Successfully "
-                    f"– Next Check at {(datetime.now(pytz.timezone('Europe/Rome'))
-                                        + ap['check_interval']['timedelta']).strftime('%d %b %Y - %H:%M:%S')}")
-
-    if "editing" in context.bot_data:
-        del context.bot_data["editing"]
-
-    return ConversationHandler.END
 
 
 async def schedule_messages_to_delete(context: CallbackContext, messages: dict):
