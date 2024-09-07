@@ -1,7 +1,7 @@
 ---
 settings:
-  default_interval: 0m0d2h15min10s
-  default_send_on_check: False
+  default_interval: 0m0d0h0min20s
+  default_send_on_check: True
 
 apps:
   1:
@@ -11,4 +11,4 @@ apps:
   2:
     link: "https://play.google.com/store/apps/details?id=com.revolut.revolut&hl=it"
     interval: 0m0d2h15min10s
-    send_on_check: True
+    send_on_check: DEFAULT

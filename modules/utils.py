@@ -102,13 +102,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
             cd["permissions"][permission] = bd["users"]["allowed"][user_id][permission]
 
     cd["apps"] = {}
-    cd["settings"] = {
-        "default_check_interval": {
-            "timedelta": None,
-            "input": None
-        },
-        "default_send_on_check": None,
-    }
+    cd["settings"] = {}
     cd["last_checks"] = []
     cd["first_boot"] = True
 
@@ -300,13 +294,19 @@ async def first_boot_configuration(update: Update, context: CallbackContext):
     await delete_message(context=context, chat_id=update.effective_chat.id, message_id=update.effective_message.id)
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
+    cd["settings"] = {
+        "default_check_interval": {}
+    }
+
     # carica la configurazione presa dal file 'first_boot.yml'
     dci = cd["settings"]["default_check_interval"]
 
     values = await parse_interval(cd["first_boot_configuration"]["settings"]["default_interval"])
 
     if not isinstance(values, list) or len(values) != 5:
-        raise ValueError("Default interval must be a list of exaclty 5 non-negative integers.")
+        raise ValueError("Default interval must be a list of exactly 5 non-negative integers.")
+
+    dci["input"] = {}
 
     dci["input"]["months"] = values[0]
     dci["input"]["days"] = values[1]
@@ -316,9 +316,9 @@ async def first_boot_configuration(update: Update, context: CallbackContext):
 
     dci["timedelta"] = timedelta(days=values[0]*30+values[1], hours=values[2], minutes=values[3], seconds=values[4])
 
-    cd["settings"]["default_send_on_check"] = cd["first_boot"]["settings"]["default_send_on_check"]
+    cd["settings"]["default_send_on_check"] = cd["first_boot_configuration"]["settings"]["default_send_on_check"]
 
-    for app_index in (apps := cd["first_boot"]["apps"]):
+    for app_index in (apps := cd["first_boot_configuration"]["apps"]):
         try:
             app_details = app(app_id=await get_app_id_from_link(apps[app_index]["link"]))
         except NotFoundError as e:
@@ -329,10 +329,25 @@ async def first_boot_configuration(update: Update, context: CallbackContext):
                 "app_id": app_details["appId"],
                 "app_link": app_details["url"],
                 "current_version": app_details["version"],
-                "last_check_time": None,
-                "check_interval": cd["apps"][app_index]["interval"],
-                # "next_check_time" viene creato in 'schedule_job_and_send_settled_app_message
-                "send_on_check": cd["apps"][app_index]["send_on_check"]
+                "last_update": datetime.strptime(app_details["lastUpdatedOn"], "%b %d, %Y").strftime("%d %B %Y"),
+                # 'next_check_time' viene creato in 'schedule_app_check'
+                "send_on_check": cd["first_boot_configuration"]["apps"][app_index]["send_on_check"],
+                "suspended": False
+            }
+            values = await parse_interval(cd["first_boot_configuration"]["apps"][len(cd["apps"])]["interval"])
+            cd["apps"][len(cd["apps"])]["check_interval"] = {
+                "input": {
+                    "months": values[0],
+                    "days": values[1],
+                    "hours": values[2],
+                    "minutes": values[3],
+                    "seconds": values[4]
+                },
+                "timedelta": timedelta(
+                    days=values[0] * 30 + values[1],
+                    hours=values[2],
+                    minutes=values[3],
+                    seconds=values[4])
             }
             await schedule_app_check(cd, False, update, context)
 
@@ -375,7 +390,7 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
     added = True if "editing" not in cd else False
 
     if added:
-        ap = cd["apps"][len(context.bot_data["apps"])]
+        ap = cd["apps"][len(cd["apps"])]
     else:
         index = cd["app_index_to_edit"]
         ap = context.bot_data["apps"][index]
@@ -396,11 +411,12 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
         callback=job_queue.scheduled_app_check,
         interval=ap["check_interval"]["timedelta"],
         chat_id=update.effective_chat.id,
-        name=ap['title'],
+        name=ap['app_name'],
         data={
+            "chat_data": cd,
             "app_link": ap["app_link"],
-            "appId": ap["appId"],
-            "app_index": str(len(context.bot_data["apps"])) if added else index
+            "app_id": ap["app_id"],
+            "app_index": len(cd["apps"]) if added else index
         }
     )
 
@@ -459,11 +475,11 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
                                    data=data,
                                    when=1.5)
 
-    bot_logger.info(f"Repeating Job for app {ap['title']} Scheduled Successfully "
+    bot_logger.info(f"Repeating Job for app {ap['app_name']} Scheduled Successfully "
                     f"– Next Check at {(datetime.now(timezone('Europe/Rome'))
                                         + ap['check_interval']['timedelta']).strftime('%d %b %Y - %H:%M:%S')}")
 
-    if "editing" in context.bot_data:
+    if "editing" in cd:
         del context.bot_data["editing"]
 
     return ConversationHandler.END
