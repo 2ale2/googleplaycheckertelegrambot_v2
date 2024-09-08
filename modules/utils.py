@@ -284,7 +284,7 @@ async def check_first_boot_configuration(conf: dict):
     return ValidateResult('Success', 1, 'Configuration is valid.')
 
 
-async def first_boot_configuration(update: Update, context: CallbackContext):
+async def load_first_boot_configuration(update: Update, context: CallbackContext):
     cd = context.chat_data
 
     if update.callback_query.data == "load_first_boot_configuration_no":
@@ -350,6 +350,8 @@ async def first_boot_configuration(update: Update, context: CallbackContext):
                     seconds=values[4])
             }
             await schedule_app_check(cd, False, update, context)
+
+    cd["first_boot"] = False
 
     keyboard = [
         [

@@ -1,35 +1,26 @@
-import datetime
-import logging
 import os
-
-import pytz
-import yaml
-import utils
 from logging import handlers
 
+import pytz
 import telegram.error
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ChatAction
+from telegram import InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     Application,
     CommandHandler,
-    ContextTypes,
-    ConversationHandler,
     CallbackQueryHandler,
     PicklePersistence,
     MessageHandler,
     filters,
-    Defaults, TypeHandler
+    Defaults
 )
 
-import job_queue
 import settings
+import utils
 from config_values import ConversationState
-from modules.utils import check_dict_keys, initialize_chat_data
-from utils import *
 from decorators import send_action
+from utils import *
 
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.basicConfig(
@@ -135,22 +126,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await check_dict_keys(cd["permissions"], context.bot_data["settings"]["permissions"])
 
     if cd["first_boot"]:
-        await context.bot.send_chat_action(action=ChatAction.TYPING, chat_id=chat_id)
         keyboard = [
             [InlineKeyboardButton(text="💡 Informazioni Generali", callback_data="print_tutorial {}")],
             [InlineKeyboardButton(text="⏭ Procedi – Settaggio Valori Default", callback_data="set_defaults {}")],
         ]
+        data = {
+            "chat_id": chat_id,
+            "text": "Prima di cominciare ad usare questo bot, vuoi un breve riepilogo sul"
+                    " suo funzionamento generale?\n\n@AleLntr dice che è consigliabile 😊",
+            "keyboard": keyboard,
+            "web_preview": False,
+            "close_button": [[1, 1], [2, 1]]
+        }
+        await send_message_with_typing_action(data=data, context=context)
 
-        context.job_queue.run_once(callback=job_queue.scheduled_send_message,
-                                   data={
-                                       "chat_id": chat_id,
-                                       "text": "Prima di cominciare ad usare questo bot, vuoi un breve riepilogo sul"
-                                               " suo funzionamento generale?\n\n@AleLntr dice che è consigliabile 😊",
-                                       "keyboard": keyboard,
-                                       "web_preview": False,
-                                       "close_button": [[1, 1], [2, 1]]
-                                   },
-                                   when=1)
         return 0
 
     await send_menu(update, context)
@@ -289,7 +278,9 @@ def main():
             0: [
                 CallbackQueryHandler(pattern="^print_tutorial.+$", callback=tutorial),
                 CallbackQueryHandler(pattern="^set_defaults.+$", callback=settings.set_defaults),
-                CallbackQueryHandler(pattern="^confirm_edit_default_settings.+$", callback=settings.set_defaults)
+                CallbackQueryHandler(pattern="^confirm_edit_default_settings.+$", callback=settings.set_defaults),
+                CallbackQueryHandler(pattern="^load_first_boot_configuration_.+$",
+                                     callback=utils.load_first_boot_configuration)
             ],
             1: [
                 CallbackQueryHandler(pattern="^set_defaults.+$", callback=settings.set_defaults)
@@ -440,9 +431,6 @@ def main():
 
     appl.add_handler(conv_handler1)
     appl.add_handler(conv_handler2)
-
-    appl.add_handler(
-        CallbackQueryHandler(pattern="^load_first_boot_configuration_.+$", callback=utils.first_boot_configuration))
 
     appl.add_handler(CallbackQueryHandler(pattern="^suspend_app.+$", callback=settings.suspend_app))
     appl.add_handler(CallbackQueryHandler(pattern="^delete_message.+$",
