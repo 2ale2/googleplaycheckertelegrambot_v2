@@ -1,21 +1,13 @@
-import logging
-from datetime import timedelta, datetime
 from logging import handlers
 from time import sleep
 
 import pytz
 import requests
-import telegram
-from google_play_scraper import app
-from google_play_scraper.exceptions import NotFoundError
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
-from telegram.constants import ChatAction
-from telegram.ext import CallbackContext, ConversationHandler, ContextTypes
+from telegram import InlineKeyboardMarkup, MessageEntity
 
-import job_queue
 from config_values import ConversationState
-from utils import check_dict_keys, delete_message, schedule_app_check
 from decorators import send_action
+from utils import *
 
 settings_logger = logging.getLogger("settings_logger")
 settings_logger.setLevel(logging.INFO)
@@ -154,10 +146,10 @@ async def set_defaults(update: Update, context: CallbackContext):
                 return 2
 
             context.chat_data["settings"]["default_check_interval"]["timedelta"] = timedelta(days=days + months * 30,
-                                                                                            seconds=seconds,
-                                                                                            minutes=minutes,
-                                                                                            hours=hours)
-            context.bot_data["settings"]["default_check_interval"]["input"] = {
+                                                                                             seconds=seconds,
+                                                                                             minutes=minutes,
+                                                                                             hours=hours)
+            context.chat_data["settings"]["default_check_interval"]["input"] = {
                 "days": days,
                 "months": months,
                 "seconds": seconds,
@@ -172,24 +164,24 @@ async def set_defaults(update: Update, context: CallbackContext):
                     f"▫️ <code>{hours}</code> ore\n"
                     f"▫️ <code>{minutes}</code> minuti\n"
                     f"▫️ <code>{seconds}</code> secondi")
-            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-            sleep(1)
-            message = await context.bot.send_message(chat_id=update.effective_chat.id,
-                                                     text=text,
-                                                     parse_mode="HTML")
             keyboard = [
                 [
-                    InlineKeyboardButton(text="✅ È corretto", callback_data=f"interval_correct {message.id}"),
-                    InlineKeyboardButton(text="❌ Non è corretto", callback_data=f"interval_incorrect {message.id}")
+                    InlineKeyboardButton(text="✅ È corretto", callback_data="interval_correct {}"),
+                    InlineKeyboardButton(text="❌ Non è corretto", callback_data="interval_incorrect {}")
                 ]
             ]
-            await context.bot.edit_message_reply_markup(chat_id=update.effective_chat.id,
-                                                        message_id=message.id,
-                                                        reply_markup=InlineKeyboardMarkup(keyboard))
+
+            await send_message_with_typing_action(data={
+                "chat_id": update.effective_chat.id,
+                "text": text,
+                "keyboard": keyboard,
+                "close_button": [[1, 1], [1, 2]]
+            }, context=context)
+
             return 2
 
     if update.callback_query and update.callback_query.data.startswith("interval_correct"):
-        i = context.bot_data["settings"]["default_check_interval"]["input"]
+        i = context.chat_data["settings"]["default_check_interval"]["input"]
         bot_logger.info(f"Default Interval -> Setting Completed: "
                         f"{i['months']}m{i['days']}d{i['months']}h{i['months']}min{i['seconds']}s")
 
@@ -203,35 +195,35 @@ async def set_defaults(update: Update, context: CallbackContext):
                 " (<code>True</code>)."
                 "\n\n🔹Potrai cambiare questa impostazione in seguito.")
 
-        sleep(1)
-
-        message = await context.bot.send_message(chat_id=update.effective_chat.id,
-                                                 text=text,
-                                                 parse_mode="HTML")
         keyboard = [
             [
-                InlineKeyboardButton(text="✅ True", callback_data=f"default_send_on_check_true {message.id}"),
-                InlineKeyboardButton(text="❌ False", callback_data=f"default_send_on_check_false {message.id}")
+                InlineKeyboardButton(text="✅ True", callback_data="default_send_on_check_true {}"),
+                InlineKeyboardButton(text="❌ False", callback_data="default_send_on_check_false {}")
             ]
         ]
-        await context.bot.edit_message_reply_markup(chat_id=update.effective_chat.id,
-                                                    message_id=message.id,
-                                                    reply_markup=InlineKeyboardMarkup(keyboard))
+
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "close_button": [[1, 1], [1, 2]]
+        }, context=context)
+
         return 3
 
     if update.callback_query and update.callback_query.data.startswith("default_send_on_check"):
-        i = context.bot_data["settings"]["default_check_interval"]["input"]
+        i = context.chat_data["settings"]["default_check_interval"]["input"]
         if len(li := update.callback_query.data.split(" ")) > 1:
             await delete_message(context=context, chat_id=update.effective_chat.id,
                                  message_id=int(li[1]))
 
         if update.callback_query.data.startswith("default_send_on_check_true"):
-            context.bot_data["settings"]["default_send_on_check"] = True
+            context.chat_data["settings"]["default_send_on_check"] = True
         else:
-            context.bot_data["settings"]["default_send_on_check"] = False
+            context.chat_data["settings"]["default_send_on_check"] = False
 
         bot_logger.info(f"Default Send On Check -> Setting Completed: "
-                        f"{context.bot_data['settings']['default_send_on_check']}")
+                        f"{context.chat_data['settings']['default_send_on_check']}")
 
         bot_logger.info(f"Default Setting Completed.")
 
@@ -247,19 +239,19 @@ async def set_defaults(update: Update, context: CallbackContext):
                 f"</code>\n\n"
                 f"🔹Premi il tasto sotto per procedere.")
 
-        sleep(1)
-        message = await context.bot.send_message(chat_id=update.effective_chat.id,
-                                                 text=text,
-                                                 parse_mode="HTML")
         keyboard = [
-            [InlineKeyboardButton(text="⏭ Procedi", callback_data=f"default_setting_finished {message.id}")]
+            [InlineKeyboardButton(text="⏭ Procedi", callback_data="default_setting_finished {}")]
         ]
 
-        await context.bot.edit_message_reply_markup(chat_id=update.effective_chat.id,
-                                                    message_id=message.id,
-                                                    reply_markup=InlineKeyboardMarkup(keyboard))
-        if not context.bot_data["settings"]["tutorial"]:
-            context.bot_data["settings"]["tutorial"] = True
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "close_button": [[1, 1]]
+        }, context=context)
+
+        if not context.chat_data["settings"]["first_boot"]:
+            context.chat_data["settings"]["first_boot"] = False
         return ConversationHandler.END
 
 
@@ -819,7 +811,7 @@ async def set_app(update: Update, context: CallbackContext):
 
         del context.chat_data["setting_app"]
 
-        return await schedule_app_check(update, context)
+        return await schedule_app_check(update=update, context=context)
 
     else:
         if update.callback_query and update.callback_query.data == "edit_set_default_values":
@@ -997,11 +989,11 @@ async def edit_app(update: Update, context: CallbackContext):
             ]
             await parse_conversation_message(context=context,
                                              data={
-                                                              "chat_id": update.effective_chat.id,
-                                                              "text": text,
-                                                              "message_id": update.effective_message.message_id,
-                                                              "reply_markup": InlineKeyboardMarkup(keyboard)
-                                                          })
+                                                 "chat_id": update.effective_chat.id,
+                                                 "text": text,
+                                                 "message_id": update.effective_message.message_id,
+                                                 "reply_markup": InlineKeyboardMarkup(keyboard)
+                                             })
             return ConversationHandler.END
 
         else:

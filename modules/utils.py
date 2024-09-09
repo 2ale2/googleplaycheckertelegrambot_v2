@@ -73,7 +73,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                             "timedelta": timedelta dell'input
                         },
                     "default_send_on_check": manda un messaggio anche se non è stato trovato un nuovo aggiornamento default
-                    "tutorial": primo avvio
+                    "first_boot": primo avvio
                 },
             "last_checks":{
                     "1": {
@@ -113,7 +113,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
     if "removing" in cd:
         del cd["removing"]
 
-    if os.path.isfile("config/first_boot.yml") and user_id == bd["users"]["owner"]:
+    if not os.path.isfile("config/first_boot.yml") and user_id == bd["users"]["owner"]:
         await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
         with open("config/first_boot.yml", 'r') as f:
             try:
@@ -376,7 +376,7 @@ async def send_message_with_typing_action(data: dict, context: CallbackContext):
     context.job_queue.run_once(
         callback=job_queue.scheduled_send_message,
         data=data,
-        when=2
+        when=1.5
     )
 
 
