@@ -8,17 +8,16 @@ from google_play_scraper.exceptions import NotFoundError
 
 from telegram.constants import ChatAction
 from telegram.ext import CallbackContext, ContextTypes, ConversationHandler
-from telegram import Update, InlineKeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from google_play_scraper import app
 from datetime import datetime, timedelta
 from pytz import timezone
 
-from config_values import ValidateIntervalOutcome
-from modules.config_values import ValidateSendOnCheckOutcome, ValidateResult, ValidateAppConfiguration
+from config_values import *
 import modules.job_queue as job_queue
 
-
 bot_logger = logging.getLogger("bot_logger")
+settings_logger = logging.getLogger("settings_logger")
 
 
 async def is_allowed_user(user_id: int, users: dict) -> bool:
@@ -36,9 +35,107 @@ async def get_app_id_from_link(link: str) -> str:
     return link.split('id=')[1].split('&hl=')[0]
 
 
+async def is_there_suspended_app(apps: dict) -> bool:
+    for ap in apps:
+        if apps[ap]['suspended']:
+            return True
+    return False
+
+
+async def parse_conversation_message(context: CallbackContext, data: dict):
+    await check_dict_keys(data, ["chat_id", "message_id", "text", "reply_markup"])
+
+    chat_id, message_id, text, reply_markup = data["chat_id"], data["message_id"], data["text"], data["reply_markup"]
+
+    keyboard = [
+        [InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="back_to_settings")]
+    ]
+
+    reply_markup = reply_markup if reply_markup else (InlineKeyboardMarkup(keyboard) if reply_markup is None else None)
+
+    try:
+        await context.bot.edit_message_text(chat_id=chat_id,
+                                            message_id=message_id,
+                                            text=text,
+                                            reply_markup=reply_markup,
+                                            parse_mode="HTML",
+                                            disable_web_page_preview=True)
+        return message_id
+
+    except telegram.error.BadRequest as e:
+        settings_logger.warning(f"Not able to edit message: {e}. A new one will be sent.")
+
+        # se il messaggio è stato rimosso e ne viene mandato un altro, i tasti che contengono un id scatenerebbero
+        # un'eccezione nelle fasi successive, ma il 'try-except...pass' ovvia al problema.
+        message = await context.bot.send_message(chat_id=chat_id,
+                                                 text=text,
+                                                 reply_markup=reply_markup,
+                                                 parse_mode="HTML",
+                                                 disable_web_page_preview=True)
+
+        if "close_button" in data:
+            button = keyboard
+            for i in data["close_button"][:-1]:
+                button = button[i - 1]
+
+            # noinspection PyTypeChecker
+            button[data["close_button"][-1] - 1] = InlineKeyboardButton(
+                text="🔙 Torna Indietro",
+                callback_data=f"back_to_main_settings {message_id}"
+            )
+
+            await context.bot.edit_message_reply_markup(chat_id=chat_id,
+                                                        message_id=message.id,
+                                                        reply_markup=InlineKeyboardMarkup(keyboard))
+        return message.id
+
+
+async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query is not None:
+        if len(li := update.callback_query.data.split(" ")) > 1:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id,
+                                                 message_id=int(li[1]))
+            except telegram.error.BadRequest:
+                pass
+
+    keyboard = [
+        [
+            InlineKeyboardButton(text="⚙ Settings", callback_data="settings"),
+            InlineKeyboardButton(text="📄 List Last Checks", callback_data="last_checks")
+        ]
+    ]
+
+    text = (f"🔹 Ciao padrone {update.effective_user.first_name}!\n\n"
+            f"Sono il bot che controlla gli aggiornamenti delle applicazioni sul Play Store.\n\n"
+            f"Scegli un'opzione ⬇")
+    if update.callback_query and update.callback_query.data == "back_to_main_menu":
+        keyboard.append([InlineKeyboardButton(text="🔐 Close Menu",
+                                              callback_data="delete_message {}".format(update.effective_message.id))])
+        await parse_conversation_message(context=context,
+                                         data={
+                                             "chat_id": update.effective_chat.id,
+                                             "text": text,
+                                             "reply_markup": InlineKeyboardMarkup(keyboard),
+                                             "message_id": update.effective_message.message_id
+                                         })
+    else:
+        keyboard.append([InlineKeyboardButton(text="🔐 Close Menu", callback_data="delete_message {}")])
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+        context.job_queue.run_once(callback=job_queue.scheduled_send_message,
+                                   data={
+                                       "chat_id": update.effective_chat.id,
+                                       "text": text,
+                                       "keyboard": keyboard,
+                                       "close_button": [2, 1]
+                                   },
+                                   when=1)
+
+    return ConversationState.CHANGE_SETTINGS
+
+
 async def initialize_chat_data(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
     cd = context.chat_data
     bd = context.bot_data
     """
@@ -94,7 +191,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
         cd["permissions"] = {}
         for permission in context.bot_data["settings"]["permissions"]:
             cd["permissions"][permission] = True
-            
+
     else:
         cd["user_type"] = "allowed"
         cd["permissions"] = {}
@@ -102,7 +199,19 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
             cd["permissions"][permission] = bd["users"]["allowed"][user_id][permission]
 
     cd["apps"] = {}
-    cd["settings"] = {}
+    cd["settings"] = {
+        "default_check_interval": {
+            "input": {
+                "months": None,
+                "days": None,
+                "hours": None,
+                "minutes": None,
+                "seconds": None
+            },
+            "timedelta": None
+        },
+        "default_send_on_check": None
+    }
     cd["last_checks"] = []
     cd["first_boot"] = True
 
@@ -114,7 +223,6 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
         del cd["removing"]
 
     if not os.path.isfile("config/first_boot.yml") and user_id == bd["users"]["owner"]:
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
         with open("config/first_boot.yml", 'r') as f:
             try:
                 first_boot = yaml.safe_load(f)
@@ -136,23 +244,25 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                             raise Exception(f"Missing key '{key}' in 'first_boot.yml' (apps[{el}]) configuration file.")
 
                 if (await check_first_boot_configuration(first_boot)).get_code() != 1:
+                    text = ("⚠️ <b>Syntax Error in First Boot Configuration File</b>\n\n"
+                            "🔸 C'è qualcosa che non va nel file <code>first_boot.yml</code>. Controlla il file "
+                            "<code>logs/main.logs</code> per i dettagli.\n\n"
+                            "ℹ La configurazione verrà ignorata.")
                     keyboard = [
                         [
-                            InlineKeyboardButton(text="🐔 Va bene, sono un pollo", callback_data="linxay_chicken")
+                            InlineKeyboardButton(text="🐔 Va bene, sono un pollo", callback_data="linxay_chicken {}")
                         ]
                     ]
-                    context.job_queue.run_once(
-                        callback=job_queue.scheduled_send_message,
-                        data={
-                            "text": "⚠️ <b>Syntax Error in First Boot Configuration File</b>\n\n"
-                                    "🔸 C'è qualcosa che non va nel file <code>first_boot.yml</code>. Controlla il file "
-                                    "<code>logs/main.logs</code> per i dettagli.\n\n"
-                                    "ℹ La configurazione verrà ignorata.",
-                            "chat_id": chat_id,
-                            "keyboard": keyboard
-                        },
-                        when=2
-                    )
+
+                    data = {
+                        "chat_id": update.effective_chat.id,
+                        "text": text,
+                        "keyboard": keyboard,
+                        "web_preview": False,
+                        "close_button": [1, 1]
+                    }
+
+                    return FirstBootConfigFileCheck(FOUND_AND_INVALID, data)
 
                 else:
                     cd['first_boot_configuration'] = first_boot
@@ -182,17 +292,35 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                         ]
                     ]
 
-                    context.job_queue.run_once(
-                        callback=job_queue.scheduled_send_message,
-                        data={
-                            "text": text,
-                            "chat_id": chat_id,
-                            "keyboard": keyboard
-                        },
-                        when=2
-                    )
-                
-                
+                    data = {
+                        "chat_id": update.effective_chat.id,
+                        "text": text,
+                        "keyboard": keyboard,
+                        "web_preview": False,
+                        "close_button": [[1, 1], [1, 2]]
+                    }
+
+                    return FirstBootConfigFileCheck(FOUND_AND_VALID, data)
+    else:
+        text = ("🚧 <b>First Boot</b>\n\n"
+                "ℹ️ <code>Configuration file not found</code>\n\n🔸 Prima di cominciare ad usare questo bot, "
+                "vuoi un breve riepilogo sul suo funzionamento generale?\n\n"
+                "@AleLntr dice che è consigliabile 😊")
+        keyboard = [
+            [InlineKeyboardButton(text="💡 Informazioni Generali", callback_data="print_tutorial {}")],
+            [InlineKeyboardButton(text="⏭ Procedi – Settaggio Valori Default",
+                                  callback_data="set_defaults {}")],
+        ]
+        data = {
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "web_preview": False,
+            "close_button": [[1, 1], [2, 1]]
+        }
+        return FirstBootConfigFileCheck(NOT_FOUND, data)
+
+
 async def validate_interval(interval: str):
     pattern = r"(?:(\d+)m)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)min)?(?:(\d+)s)?"
 
@@ -288,15 +416,24 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
     cd = context.chat_data
 
     if update.callback_query.data == "load_first_boot_configuration_no":
-        del cd['first_boot']
-        return
+        del cd['first_boot_configuration']
+
+        keyboard = [
+            [InlineKeyboardButton(text="💡 Informazioni Generali", callback_data="print_tutorial {}")],
+            [InlineKeyboardButton(text="⏭ Procedi – Settaggio Valori Default", callback_data="set_defaults {}")],
+        ]
+
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": "Prima di cominciare ad usare questo bot, vuoi un breve riepilogo sul"
+                    " suo funzionamento generale?\n\n@AleLntr dice che è consigliabile 😊",
+            "keyboard": keyboard,
+            "close_button": [[1, 1], [2, 1]]
+        }, context=context)
+        return 0
 
     await delete_message(context=context, chat_id=update.effective_chat.id, message_id=update.effective_message.id)
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-
-    cd["settings"] = {
-        "default_check_interval": {}
-    }
 
     # carica la configurazione presa dal file 'first_boot.yml'
     dci = cd["settings"]["default_check_interval"]
@@ -314,7 +451,7 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
     dci["input"]["minutes"] = values[3]
     dci["input"]["seconds"] = values[4]
 
-    dci["timedelta"] = timedelta(days=values[0]*30+values[1], hours=values[2], minutes=values[3], seconds=values[4])
+    dci["timedelta"] = timedelta(days=values[0] * 30 + values[1], hours=values[2], minutes=values[3], seconds=values[4])
 
     cd["settings"]["default_send_on_check"] = cd["first_boot_configuration"]["settings"]["default_send_on_check"]
 
@@ -324,7 +461,7 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
         except NotFoundError as e:
             raise ValueError(f"App with link '{apps[app_index]['link']}' not found: {e}")
         else:
-            cd["apps"][len(cd["apps"])+1] = {
+            cd["apps"][len(cd["apps"]) + 1] = {
                 "app_name": app_details["title"],
                 "app_id": app_details["appId"],
                 "app_link": app_details["url"],
@@ -355,7 +492,7 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
 
     keyboard = [
         [
-            InlineKeyboardButton(text="⏭ Procedi al Menu Principale", callback_data="first_configuration_completed")
+            InlineKeyboardButton(text="⏭ Procedi al Menu Principale", callback_data="first_configuration_completed {}")
         ]
     ]
 
@@ -363,7 +500,8 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
         "chat_id": update.effective_chat.id,
         "text": "✅ <b>First Boot Configuration Completed</b>\n\n"
                 "🔹 Tutte le impostazioni e le app sono state configurate correttamente.",
-        "keyboard": keyboard
+        "keyboard": keyboard,
+        "close_button": [1, 1]
     }, context=context)
 
     return ConversationHandler.END

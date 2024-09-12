@@ -4,7 +4,6 @@ from logging import handlers
 import pytz
 import telegram.error
 from dotenv import load_dotenv
-from telegram import InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     Application,
@@ -18,7 +17,6 @@ from telegram.ext import (
 
 import settings
 import utils
-from config_values import ConversationState
 from decorators import send_action
 from utils import *
 
@@ -107,6 +105,7 @@ async def set_data(appl: Application) -> None:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
+    check = None
     if not await is_allowed_user(user_id=user_id, users=context.bot_data["users"]):
         await context.bot.send_message(chat_id=chat_id, text="❌ You are not allowed to use this bot.")
         return
@@ -119,28 +118,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except telegram.error.BadRequest:
                 pass
 
-    if not (cd := context.chat_data):
-        return await initialize_chat_data(update, context)
-
-    await check_dict_keys(cd, ["user_type", "permissions", "first_boot"])
-    await check_dict_keys(cd["permissions"], context.bot_data["settings"]["permissions"])
-
-    if cd["first_boot"]:
+    if update.callback_query and update.callback_query.data.startswith("linxay_chicken"):
+        text = ("🚧 <b>First Boot</b>\n\n"
+                "ℹ️ <code>Configuration file ignored</code>\n\n🔸 Prima di cominciare ad usare questo bot, "
+                "vuoi un breve riepilogo sul suo funzionamento generale?\n\n"
+                "@AleLntr dice che è consigliabile 😊")
         keyboard = [
             [InlineKeyboardButton(text="💡 Informazioni Generali", callback_data="print_tutorial {}")],
-            [InlineKeyboardButton(text="⏭ Procedi – Settaggio Valori Default", callback_data="set_defaults {}")],
+            [InlineKeyboardButton(text="⏭ Procedi – Settaggio Valori Default",
+                                  callback_data="set_defaults {}")],
         ]
-        data = {
+        await send_message_with_typing_action(data={
             "chat_id": chat_id,
-            "text": "Prima di cominciare ad usare questo bot, vuoi un breve riepilogo sul"
-                    " suo funzionamento generale?\n\n@AleLntr dice che è consigliabile 😊",
+            "text": text,
             "keyboard": keyboard,
             "web_preview": False,
             "close_button": [[1, 1], [2, 1]]
-        }
-        await send_message_with_typing_action(data=data, context=context)
-
+        }, context=context)
         return 0
+
+    if (cd := context.chat_data) and "first_boot" in cd and cd["first_boot"]:
+        cd = {}
+
+    if not cd:
+        check = await initialize_chat_data(update, context)
+        await send_message_with_typing_action(data=check.get_message_data(), context=context)
+        if check.get_code() == FOUND_AND_VALID or check.get_code() == NOT_FOUND:
+            return 0
+        if check.get_code() == FOUND_AND_INVALID:
+            return ConversationHandler.END
+
+    await check_dict_keys(cd, ["user_type", "permissions", "first_boot"])
+    await check_dict_keys(cd["permissions"], context.bot_data["settings"]["permissions"])
 
     await send_menu(update, context)
     return ConversationHandler.END
@@ -168,50 +177,6 @@ async def tutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                    },
                                    when=1.5)
     return 1
-
-
-async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.callback_query is not None:
-        if len(li := update.callback_query.data.split(" ")) > 1:
-            try:
-                await context.bot.delete_message(chat_id=update.effective_chat.id,
-                                                 message_id=int(li[1]))
-            except telegram.error.BadRequest:
-                pass
-
-    keyboard = [
-        [
-            InlineKeyboardButton(text="⚙ Settings", callback_data="settings"),
-            InlineKeyboardButton(text="📄 List Last Checks", callback_data="last_checks")
-        ]
-    ]
-
-    text = (f"🔹 Ciao padrone {update.effective_user.first_name}!\n\n"
-            f"Sono il bot che controlla gli aggiornamenti delle applicazioni sul Play Store.\n\n"
-            f"Scegli un'opzione ⬇")
-    if update.callback_query and update.callback_query.data == "back_to_main_menu":
-        keyboard.append([InlineKeyboardButton(text="🔐 Close Menu",
-                                              callback_data="delete_message {}".format(update.effective_message.id))])
-        await settings.parse_conversation_message(context=context,
-                                                  data={
-                                                      "chat_id": update.effective_chat.id,
-                                                      "text": text,
-                                                      "reply_markup": InlineKeyboardMarkup(keyboard),
-                                                      "message_id": update.effective_message.message_id
-                                                  })
-    else:
-        keyboard.append([InlineKeyboardButton(text="🔐 Close Menu", callback_data="delete_message {}")])
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-        context.job_queue.run_once(callback=job_queue.scheduled_send_message,
-                                   data={
-                                       "chat_id": update.effective_chat.id,
-                                       "text": text,
-                                       "keyboard": keyboard,
-                                       "close_button": [2, 1]
-                                   },
-                                   when=1)
-
-    return ConversationState.CHANGE_SETTINGS
 
 
 async def explore_handlers(matches: list, handler_s, update, level=0):
@@ -250,20 +215,15 @@ async def explore_handlers(matches: list, handler_s, update, level=0):
     return matches
 
 
-async def catch_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    matched_handlers = []
-    if update.callback_query and ("back_to_settings" in update.callback_query.data):
-        print(update.callback_query.data)
-        for handler_group in context.application.handlers.values():
-            matched_handlers = await explore_handlers(matched_handlers, handler_group, update)
-        if matched_handlers:
-            print(f"Matched handlers: {matched_handlers}")
-        else:
-            print("No matching handler found")
-        print("=====================================================")
+async def catch_update(update: Update):
+    print(update.to_json())
 
 
 def main():
+    # if os.path.exists("config/persistence"):
+    #     os.remove("config/persistence")
+    #     print("--------Persistence file removed--------\n")
+
     persistence = PicklePersistence(filepath="config/persistence")
     appl = (ApplicationBuilder().token(os.getenv("BOT_TOKEN")).persistence(persistence).
             defaults(Defaults(tzinfo=pytz.timezone('Europe/Rome'))).
@@ -272,6 +232,7 @@ def main():
     conv_handler1 = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
+            CallbackQueryHandler(pattern="^linxay_chicken.+$", callback=start),
             CallbackQueryHandler(pattern="edit_default_settings", callback=settings.set_defaults)
         ],
         states={
@@ -427,7 +388,7 @@ def main():
         allow_reentry=True
     )
 
-    # app.add_handler(TypeHandler(Update, callback=catch_update), group=-1)
+    # appl.add_handler(TypeHandler(Update, callback=catch_update), group=-1)
 
     appl.add_handler(conv_handler1)
     appl.add_handler(conv_handler2)

@@ -31,7 +31,7 @@ texts:
     eventuali aggiornamenti.\n\n🆘 In caso di problemi, controlla i file di log presenti nella cartella del progetto in 
     <code>/misc/logs</code> e contatta @AleLntr.\n\n➡ <b>Nota Importante</b> – Per consentire al bot di inviarti 
     messaggi, ricordati di mantenere la chat attiva mantenendovi almeno un messaggio all'interno, altrimenti il bot 
-    non ti potrà scrivere.\n\n⚠ Tieni inoltre presente che Telegram impone un limite di 30 messaggi al secondo, quindi 
+    non ti potrà scrivere.\n\n⚠️ Tieni inoltre presente che Telegram impone un limite di 30 messaggi al secondo, quindi 
     fai attenzione a non eccedere tale limite."
     allowed_users: "💡 <b>Informazioni Generali</b>\n\n⚠️ <u>L'admin @Linxay ha aggiunto il tuo ID alla whitelist</u>.
     Tieni presente che <b>può rimuoverlo</b> in qualunque momento o modificare i tuoi permessi.\n\nℹ️ Sono in grado di 

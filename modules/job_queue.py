@@ -42,7 +42,7 @@ async def scheduled_send_message(context: ContextTypes.DEFAULT_TYPE):
 
     if "keyboard" in data:
         if "close_button" in data:
-            check = isinstance(data["close_button"][1], list)
+            check = isinstance(data["close_button"][0], list)
             close_buttons = []
             if check:
                 for button in data["close_button"]:

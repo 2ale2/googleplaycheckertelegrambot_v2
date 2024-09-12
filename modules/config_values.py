@@ -1,5 +1,21 @@
 from enum import Enum
 
+FOUND_AND_VALID = 0
+FOUND_AND_INVALID = -1
+NOT_FOUND = -2
+
+
+class FirstBootConfigFileCheck:
+    def __init__(self, code, message_data):
+        self.code = code
+        self.message_data = message_data
+
+    def get_code(self):
+        return self.code
+
+    def get_message_data(self):
+        return self.message_data
+
 
 class ValidateResult:
     def __init__(self, field, code, message):
