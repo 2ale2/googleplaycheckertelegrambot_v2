@@ -25,6 +25,47 @@ async def is_allowed_user(user_id: int, users: dict) -> bool:
     return user_id == users["owner"] or user_id == users["admin"] or user_id in users["allowed"]
 
 
+async def is_allowed_user_function(user_id: int, users: dict, permission: str) -> bool:
+    if not await is_allowed_user(user_id, users):
+        return False
+
+    if user_id == users["owner"]:
+        return True
+
+    if user_id == users["admin"]:
+        return True
+
+    if permission not in users["allowed"][user_id]:
+        raise ValueError(f"Permission {permission} does not exist in {user_id} record.")
+
+    return users["allowed"][user_id]["permissions"][permission]
+
+
+async def get_functions_keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [
+            InlineKeyboardButton(text="🗂 Gestisci App", callback_data="menage_apps"),
+            InlineKeyboardButton(text="🔧 Imp. Default", callback_data="edit_default_settings")
+        ]
+    ]
+
+    for permission in context.bot_data["settings"]["permissions"]:
+        p = context.bot_data["settings"]["permissions"][permission]
+        if await is_allowed_user_function(user_id=update.effective_user.id,
+                                          users=context.bot_data["users"],
+                                          permission=permission):
+            button = InlineKeyboardButton(text=p["button_text"], callback_data=p["button_data"])
+        else:
+            button = InlineKeyboardButton(text=p["button_text"] + " ⛔️", callback_data=p["button_data"])
+
+        if len(keyboard) == 1 or len(keyboard[1]) == 2:
+            keyboard.insert(1, [button])
+        else:
+            keyboard[1].append(button)
+
+    return keyboard.append([InlineKeyboardButton(text="🔙 Menu Principale", callback_data="back_to_main_menu")])
+
+
 async def check_dict_keys(d: dict, keys: list):
     mancanti = [key for key in keys if key not in d]
     if len(mancanti) != 0:
@@ -177,6 +218,14 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                         "last_check_time": data ultimo check
                     },
                     ...
+            },
+            ,
+            "backups": {
+                1: {
+                    "file_name": "backup1.txt",
+                    "backup_time": datetime,
+    
+                }
             }
         }
     """
@@ -222,7 +271,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
     if "removing" in cd:
         del cd["removing"]
 
-    if not os.path.isfile("config/first_boot.yml") and user_id == bd["users"]["owner"]:
+    if os.path.isfile("config/first_boot.yml") and user_id == bd["users"]["owner"]:
         with open("config/first_boot.yml", 'r') as f:
             try:
                 first_boot = yaml.safe_load(f)
@@ -416,6 +465,8 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
     cd = context.chat_data
 
     if update.callback_query.data == "load_first_boot_configuration_no":
+        await delete_message(context=context, chat_id=update.effective_chat.id,
+                             message_id=update.effective_message.id)
         del cd['first_boot_configuration']
 
         keyboard = [
@@ -425,8 +476,10 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
 
         await send_message_with_typing_action(data={
             "chat_id": update.effective_chat.id,
-            "text": "Prima di cominciare ad usare questo bot, vuoi un breve riepilogo sul"
-                    " suo funzionamento generale?\n\n@AleLntr dice che è consigliabile 😊",
+            "text": "🚧 <b>First Boot</b>\n\n"
+                    "ℹ️ <code>Configuration file ignored</code>\n\n🔸 Prima di cominciare ad usare questo bot, "
+                    "vuoi un breve riepilogo sul suo funzionamento generale?\n\n"
+                    "@AleLntr dice che è consigliabile 😊",
             "keyboard": keyboard,
             "close_button": [[1, 1], [2, 1]]
         }, context=context)
@@ -466,6 +519,7 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
                 "app_id": app_details["appId"],
                 "app_link": app_details["url"],
                 "current_version": app_details["version"],
+                "last_check": None,
                 "last_update": datetime.strptime(app_details["lastUpdatedOn"], "%b %d, %Y").strftime("%d %B %Y"),
                 # 'next_check_time' viene creato in 'schedule_app_check'
                 "send_on_check": cd["first_boot_configuration"]["apps"][app_index]["send_on_check"],
@@ -510,6 +564,9 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
 async def send_message_with_typing_action(data: dict, context: CallbackContext):
     await check_dict_keys(data, ["chat_id", "text"])
 
+    if "message_id" in data:
+        await delete_message(context=context, chat_id=data["chat_id"], message_id=data["message_id"])
+
     await context.bot.send_chat_action(chat_id=data["chat_id"], action=ChatAction.TYPING)
     context.job_queue.run_once(
         callback=job_queue.scheduled_send_message,
@@ -533,15 +590,15 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
         ap = cd["apps"][len(cd["apps"])]
     else:
         index = cd["app_index_to_edit"]
-        ap = context.bot_data["apps"][index]
+        ap = context.chat_data["apps"][index]
         del cd["app_index_to_edit"]
-        del context.bot_data["editing"]
+        del context.chat_data["editing"]
 
     ap["next_check"] = {}
     ap["next_check"] = datetime.now(timezone('Europe/Rome')) + ap["check_interval"]["timedelta"]
 
     if not added:
-        jobs = context.job_queue.get_jobs_by_name(ap['title'])
+        jobs = context.job_queue.get_jobs_by_name(ap['app_name'])
         if len(jobs) > 0:
             for job in jobs:
                 job.schedule_removal()
@@ -576,9 +633,6 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
                 f"🔸 <u>Next Check</u> ➡ <code>{ap['next_check'].strftime('%d %B %Y – %H:%M:%S')}</code>"
                 f"\n\n")
 
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id,
-                                           action=ChatAction.TYPING)
-
         if added:
             button = InlineKeyboardButton(text="➕ Aggiungi Altra App", callback_data="add_app")
         else:
@@ -611,15 +665,13 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
         if "from_check" in cd:
             del cd["from_check"]
 
-        context.job_queue.run_once(callback=job_queue.scheduled_send_message,
-                                   data=data,
-                                   when=1.5)
+        await send_message_with_typing_action(data=data, context=context)
 
     bot_logger.info(f"Repeating Job for app {ap['app_name']} Scheduled Successfully "
                     f"– Next Check at {(datetime.now(timezone('Europe/Rome'))
                                         + ap['check_interval']['timedelta']).strftime('%d %b %Y - %H:%M:%S')}")
 
     if "editing" in cd:
-        del context.bot_data["editing"]
+        del context.chat_data["editing"]
 
     return ConversationHandler.END

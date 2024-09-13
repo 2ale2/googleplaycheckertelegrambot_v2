@@ -133,4 +133,7 @@ class ConversationState(Enum):
     DELETE_APP_SELECT = 17
     DELETE_APP_CONFIRM = 18
 
-    TO_BE_ENDED = 19
+    # BackupRestore
+    BACKUP_MENU = 19
+
+    TO_BE_ENDED = 20

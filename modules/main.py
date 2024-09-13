@@ -38,7 +38,7 @@ load_dotenv()
 
 
 # noinspection GrazieInspection
-async def set_data(appl: Application) -> None:
+async def set_bot_data(appl: Application) -> None:
     """
     {
         "settings": {
@@ -78,7 +78,7 @@ async def set_data(appl: Application) -> None:
     if "settings" not in (bd := appl.bot_data):
         bd["settings"] = {
             "first_boot": True,
-            "permissions": []
+            "permissions": {}
         }
 
     with open("config/constants.yml", "r", encoding='utf-8') as f:
@@ -220,14 +220,14 @@ async def catch_update(update: Update):
 
 
 def main():
-    # if os.path.exists("config/persistence"):
-    #     os.remove("config/persistence")
-    #     print("--------Persistence file removed--------\n")
+    if os.path.exists("config/persistence"):
+        os.remove("config/persistence")
+        print("\n\ni  Persistence file removed\n\n")
 
     persistence = PicklePersistence(filepath="config/persistence")
     appl = (ApplicationBuilder().token(os.getenv("BOT_TOKEN")).persistence(persistence).
             defaults(Defaults(tzinfo=pytz.timezone('Europe/Rome'))).
-            post_init(set_data).build())
+            post_init(set_bot_data).build())
 
     conv_handler1 = ConversationHandler(
         entry_points=[
@@ -359,7 +359,11 @@ def main():
         states={
             ConversationState.CHANGE_SETTINGS: [
                 CallbackQueryHandler(pattern="menage_apps", callback=settings.menage_apps),
+                CallbackQueryHandler(pattern="backup_restore", callback=settings.backup_and_restore),
                 conv_handler1
+            ],
+            ConversationState.BACKUP_MENU: [
+                CallbackQueryHandler(pattern="^create_backup$", callback=settings.backup_and_restore)
             ],
             ConversationState.MANAGE_APPS: [
                 add_app_conv_handler,

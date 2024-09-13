@@ -153,7 +153,7 @@ async def scheduled_app_check(context: ContextTypes.DEFAULT_TYPE):
     cd = context.job.data["chat_data"]
 
     if (ap := cd["apps"][context.job.data["app_index"]])["suspended"]:
-        job_queue_logger.info(f"Check Suspended for app {ap['title']}.")
+        job_queue_logger.info(f"Check Suspended for app {ap['app_name']}.")
         return
 
     if (res := requests.get(context.job.data["app_link"])).status_code != 200:
