@@ -105,7 +105,6 @@ async def set_bot_data(appl: Application) -> None:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    check = None
     if not await is_allowed_user(user_id=user_id, users=context.bot_data["users"]):
         await context.bot.send_message(chat_id=chat_id, text="❌ You are not allowed to use this bot.")
         return

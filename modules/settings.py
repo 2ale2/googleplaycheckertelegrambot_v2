@@ -3,6 +3,7 @@ from time import sleep
 
 import pytz
 import requests
+import yaml
 from telegram import MessageEntity
 
 from decorators import send_action
@@ -377,11 +378,11 @@ async def menage_apps(update: Update, context: CallbackContext):
 
 async def backup_and_restore(update: Update, context: CallbackContext):
     cd = context.chat_data
+    text = "💾 <b>Backup & Ripristino</b>\n\n"
     if update.callback_query.data == "backup_restore":
-        text = "💾 <b>Backup & Ripristino</b>\n\n"
-        if not is_allowed_user_function(user_id=update.effective_user.id,
-                                        users=context.bot_data["users"],
-                                        permission="can_menage_backups"):
+        if not await is_allowed_user_function(user_id=update.effective_user.id,
+                                              users=context.bot_data["users"],
+                                              permission="can_menage_backups"):
             text += ("❌ Non sei abilitato all'uso di questa funzione\n\n"
                      "🔸 Contatta @Linxay per richiedere di essere abilitato.")
             keyboard = [
@@ -399,7 +400,7 @@ async def backup_and_restore(update: Update, context: CallbackContext):
             return ConversationState.CHANGE_SETTINGS
 
         if len(cd["backups"]) == 0:
-            text += "ℹ️ Non hai alcun backup salvato.\n\n🔸 Scegli un'opzione."
+            text += "ℹ️ Non hai nessun backup.\n\n🔸 Scegli un'opzione."
         else:
             text += f"ℹ️ Hai {len(cd['backups'])} file(s) di backup.\n\n🔍 <b>Informazioni</b>\n\n"
             for backup in cd["backups"]:
@@ -417,14 +418,56 @@ async def backup_and_restore(update: Update, context: CallbackContext):
             ]
         ]
 
-        await send_message_with_typing_action(data={
+        await parse_conversation_message(context=context, data={
             "chat_id": update.effective_chat.id,
             "text": text,
-            "keyboard": keyboard,
+            "reply_markup": InlineKeyboardMarkup(keyboard),
             "message_id": update.effective_message.id
-        }, context=context)
+        })
 
         return ConversationState.BACKUP_MENU
+
+    if update.callback_query.data == "create_backup":
+        if not os.path.isdir(user_folder := ("backups" + str(update.effective_user.id))):
+            os.makedirs(user_folder)
+        filename = datetime.now(pytz.timezone("Europe/Rome")).strftime("%d_%m_%Y_%H_%M_%S") + ".yml"
+
+        if not await yaml_dict_dumper(cd, path := (user_folder + "/" + filename)):
+            text += ("❌ <u>Il file di backup non è stato creato a cause di un errore</u>\n\n"
+                     "Contatta @AleLntr per assitenza."
+                     "🔸 Scegli un'opzione.")
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🆘 Contatta @AleLntr", url="https://t.me/AleLntr")
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="back_to_main_menu")
+                ]
+            ]
+
+            await send_message_with_typing_action(data={
+                "chat_id": update.effective_chat.id,
+                "text": text,
+                "keyboard": keyboard,
+                "message_id": update.effective_message.id
+            }, context=context)
+
+            return ConversationState.CHANGE_SETTINGS
+        else:
+            cd["backups"][len(cd["backups"])+1]["file_name"] = filename
+            cd["backups"][len(cd["backups"])]["backup_time"] = datetime.now(pytz.timezone("Europe/Rome"))
+
+            text += ("☑️ <u>Backup creato con successo</u>\n\n"
+                     f"📂 <u>File Folder</u> <code>{path}</code>\n\n")
+            keyboard = [
+                [
+                    InlineKeyboardButton("🗄 Scarica il file in locale",
+                                         callback_data="download_backup_file " + path),
+                    InlineKeyboardButton
+                ]
+            ]
+
+
 
 
 async def close_menu(update: Update, context: CallbackContext):
@@ -509,11 +552,11 @@ async def list_last_checks(update: Update, context: CallbackContext):
         text += "ℹ I controlli di eventuali app sospese non sono in lista."
 
     await send_message_with_typing_action(data={
-                                         "chat_id": update.effective_chat.id,
-                                         "message_id": update.effective_message.id,
-                                         "text": text,
-                                         "keyboard": keyboard
-                                     }, context=context)
+        "chat_id": update.effective_chat.id,
+        "message_id": update.effective_message.id,
+        "text": text,
+        "keyboard": keyboard
+    }, context=context)
 
     return ConversationState.CHANGE_SETTINGS
 
@@ -951,10 +994,10 @@ async def set_app(update: Update, context: CallbackContext):
         ]
 
         await send_message_with_typing_action(data={
-                                       "chat_id": update.effective_chat.id,
-                                       "text": text,
-                                       "keyboard": keyboard
-                                   }, context=context)
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard
+        }, context=context)
 
         return ConversationState.SEND_ON_CHECK
 

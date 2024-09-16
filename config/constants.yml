@@ -1,7 +1,7 @@
 ---
 permissions:
   can_manage_backups:
-    button_text: "💾 Backup & Ripristino",
+    button_text: "💾 Backup & Ripristino"
     button_data: "backup_restore"
 texts:
   overall_functioning:

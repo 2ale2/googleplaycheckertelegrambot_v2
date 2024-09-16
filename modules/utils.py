@@ -13,6 +13,7 @@ from google_play_scraper import app
 from datetime import datetime, timedelta
 from pytz import timezone
 
+from yaml_de_serializer import serialize_dict_to_yaml, deserialize_dict_from_yaml
 from config_values import *
 import modules.job_queue as job_queue
 
@@ -63,7 +64,9 @@ async def get_functions_keyboard(update: Update, context: ContextTypes.DEFAULT_T
         else:
             keyboard[1].append(button)
 
-    return keyboard.append([InlineKeyboardButton(text="🔙 Menu Principale", callback_data="back_to_main_menu")])
+    keyboard.append([InlineKeyboardButton(text="🔙 Menu Principale", callback_data="back_to_main_menu")])
+
+    return keyboard
 
 
 async def check_dict_keys(d: dict, keys: list):
@@ -263,6 +266,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
     }
     cd["last_checks"] = []
     cd["first_boot"] = True
+    cd["backups"] = {}
 
     if "editing" in cd:
         del cd["editing"]
@@ -558,6 +562,8 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
         "close_button": [1, 1]
     }, context=context)
 
+    del cd["first_boot_configuration"]
+
     return ConversationHandler.END
 
 
@@ -675,3 +681,6 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
         del context.chat_data["editing"]
 
     return ConversationHandler.END
+
+async def yaml_dict_dumper(cd: dict, filepath: str) -> bool:
+
