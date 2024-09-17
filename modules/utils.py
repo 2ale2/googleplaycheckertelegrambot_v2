@@ -1,5 +1,6 @@
 import os.path
 import re
+import glob
 
 import yaml
 import logging
@@ -153,7 +154,8 @@ async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (f"🔹 Ciao padrone {update.effective_user.first_name}!\n\n"
             f"Sono il bot che controlla gli aggiornamenti delle applicazioni sul Play Store.\n\n"
             f"Scegli un'opzione ⬇")
-    if update.callback_query and update.callback_query.data == "back_to_main_menu":
+    if update.callback_query and (update.callback_query.data == "back_to_main_menu" or
+                                  update.callback_query.data == "from_backup_restore"):
         keyboard.append([InlineKeyboardButton(text="🔐 Close Menu",
                                               callback_data="delete_message {}".format(update.effective_message.id))])
         await parse_conversation_message(context=context,
@@ -163,17 +165,16 @@ async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                              "reply_markup": InlineKeyboardMarkup(keyboard),
                                              "message_id": update.effective_message.message_id
                                          })
+    if update.callback_query and update.callback_query.data == "from_backup_restore":
+        return ConversationHandler.END
     else:
         keyboard.append([InlineKeyboardButton(text="🔐 Close Menu", callback_data="delete_message {}")])
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-        context.job_queue.run_once(callback=job_queue.scheduled_send_message,
-                                   data={
+        await send_message_with_typing_action(data={
                                        "chat_id": update.effective_chat.id,
                                        "text": text,
                                        "keyboard": keyboard,
                                        "close_button": [2, 1]
-                                   },
-                                   when=1)
+                                   }, context=context)
 
     return ConversationState.CHANGE_SETTINGS
 
@@ -268,6 +269,15 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
     cd["first_boot"] = True
     cd["backups"] = {}
 
+    if os.path.isdir(user_folder := ("backups/" + str(update.effective_user.id))):
+        l = glob.glob(user_folder + "/*.yml")
+        for el in l:
+            file_name = el.split("\\")[1]
+            cd["backups"][len(cd["backups"]) + 1] = {}
+            cd["backups"][len(cd["backups"])]["file_name"] = file_name
+            file_name = file_name.split(".yml")[0]
+            cd["backups"][len(cd["backups"])]["backup_time"] = datetime.strptime(file_name,
+                                                                                 "%d_%m_%Y_%H_%M_%S")
     if "editing" in cd:
         del cd["editing"]
     if "adding" in cd:
@@ -567,13 +577,10 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
     return ConversationHandler.END
 
 
-async def send_message_with_typing_action(data: dict, context: CallbackContext):
+async def send_message_with_typing_action(data: dict, context: CallbackContext, action: ChatAction = ChatAction.TYPING):
     await check_dict_keys(data, ["chat_id", "text"])
 
-    if "message_id" in data:
-        await delete_message(context=context, chat_id=data["chat_id"], message_id=data["message_id"])
-
-    await context.bot.send_chat_action(chat_id=data["chat_id"], action=ChatAction.TYPING)
+    await context.bot.send_chat_action(chat_id=data["chat_id"], action=action)
     context.job_queue.run_once(
         callback=job_queue.scheduled_send_message,
         data=data,
@@ -595,7 +602,7 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
     if added:
         ap = cd["apps"][len(cd["apps"])]
     else:
-        index = cd["app_index_to_edit"]
+        index = int(cd["app_index_to_edit"])
         ap = context.chat_data["apps"][index]
         del cd["app_index_to_edit"]
         del context.chat_data["editing"]
@@ -682,5 +689,19 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
 
     return ConversationHandler.END
 
-async def yaml_dict_dumper(cd: dict, filepath: str) -> bool:
 
+async def yaml_dict_dumper(cd: dict, filepath: str) -> bool:
+    return serialize_dict_to_yaml(cd, filepath)
+
+
+async def schedule_messages_to_delete(context: CallbackContext, messages: dict):
+    for message in messages:
+        await check_dict_keys(messages[message], ["time", "chat_id"])
+        time, chat_id = messages[message]["time"], messages[message]["chat_id"]
+
+        context.job_queue.run_once(callback=job_queue.scheduled_delete_message,
+                                   data={
+                                       "message_id": int(message),
+                                       "chat_id": chat_id
+                                   },
+                                   when=time)

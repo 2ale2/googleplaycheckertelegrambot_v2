@@ -1,5 +1,15 @@
 import yaml
 import datetime
+import logging
+from logging import handlers
+
+br_logger = logging.getLogger('br_logger')
+br_logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler = handlers.RotatingFileHandler(filename="logs/formatter.log",
+                                            maxBytes=1024, backupCount=1)
+file_handler.setFormatter(formatter)
+br_logger.addHandler(file_handler)
 
 serialization_registry = {}
 
@@ -59,9 +69,14 @@ class CustomLoader(yaml.Loader):
         return custom_deserializer(mapping)
 
 
-def serialize_dict_to_yaml(data, filepath):
+def serialize_dict_to_yaml(data, filepath) -> bool:
     with open(filepath, "w") as f:
-        yaml.dump(data, f, default_flow_style=False, Dumper=CustomDumper)
+        try:
+            yaml.dump(data, f, default_flow_style=False, Dumper=CustomDumper)
+        except yaml.YAMLError as exc:
+            br_logger.error(f"Error in dumping data: {exc}")
+            return False
+        return True
 
 
 def deserialize_dict_from_yaml(filepath):

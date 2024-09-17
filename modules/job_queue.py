@@ -65,6 +65,20 @@ async def scheduled_send_message(context: ContextTypes.DEFAULT_TYPE):
                     close_button = close_button[i - 1]
                 close_buttons.append(close_button)
 
+    if "file_path" in data:
+        file = True
+        with open(data["file_path"], "rb") as f:
+            message = await context.bot.send_document(chat_id=data["chat_id"],
+                                                      document=f)
+        keyabord = [
+            [
+                InlineKeyboardButton(text="🔐 Close", callback_data=f"delete_message {message.id}")
+            ]
+        ]
+        await context.bot.edit_message_reply_markup(chat_id=data["chat_id"],
+                                                    message_id=message.id,
+                                                    reply_markup=InlineKeyboardMarkup(keyabord))
+
     try:
         web_preview = (not data["web_preview"] if "web_preview" in data else None)
         if "close_button" in data:
@@ -72,6 +86,7 @@ async def scheduled_send_message(context: ContextTypes.DEFAULT_TYPE):
                                                      text=data["text"],
                                                      parse_mode="HTML",
                                                      disable_web_page_preview=web_preview)
+
             # noinspection PyUnboundLocalVariable
             for counter, button in enumerate(close_buttons, start=1):
                 # noinspection PyUnboundLocalVariable
@@ -99,9 +114,8 @@ async def scheduled_send_message(context: ContextTypes.DEFAULT_TYPE):
                 # noinspection PyUnboundLocalVariable
                 parent[final_index] = close_buttons[0]
 
-            reply_markup = InlineKeyboardMarkup(data["keyboard"])
             await context.bot.edit_message_reply_markup(chat_id=data["chat_id"], message_id=message.id,
-                                                        reply_markup=reply_markup)
+                                                        reply_markup=InlineKeyboardMarkup(data["keyboard"]))
         else:
             await context.bot.send_message(chat_id=data["chat_id"], text=data["text"], parse_mode="HTML",
                                            reply_markup=(InlineKeyboardMarkup(data["keyboard"])

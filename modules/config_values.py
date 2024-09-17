@@ -135,5 +135,8 @@ class ConversationState(Enum):
 
     # BackupRestore
     BACKUP_MENU = 19
+    BACKUP_COMPLETED = 20
+    BACKUP_SELECTED = 21
+    BACKUP_DELETE = 22
 
-    TO_BE_ENDED = 20
+    TO_BE_ENDED = 23

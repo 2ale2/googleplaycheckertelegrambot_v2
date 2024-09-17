@@ -348,6 +348,34 @@ def main():
         allow_reentry=True,  # per consentire di rimuovere un'altra app o riselezionare l'app
     )
 
+    backup_restore_conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(pattern="backup_restore", callback=settings.backup_and_restore)],
+        states={
+            ConversationState.BACKUP_MENU: [
+                CallbackQueryHandler(pattern="^create_backup$", callback=settings.backup_and_restore),
+                MessageHandler(filters.TEXT, callback=settings.backup_and_restore)
+            ],
+            ConversationState.BACKUP_COMPLETED: [
+                CallbackQueryHandler(pattern="^download_backup_file.+$", callback=settings.backup_and_restore),
+            ],
+            ConversationState.BACKUP_SELECTED: [
+                CallbackQueryHandler(pattern="^download_backup_file.+$", callback=settings.backup_and_restore),
+                CallbackQueryHandler(pattern="^delete_backup.+$", callback=settings.backup_and_restore),
+                CallbackQueryHandler(pattern="^restore_backup.+$", callback=settings.backup_and_restore)
+            ],
+            ConversationState.BACKUP_DELETE: [
+                CallbackQueryHandler(pattern="^confirm_delete_backup.+$", callback=settings.backup_and_restore)
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(pattern="from_backup_restore", callback=settings.send_menu)
+        ],
+        map_to_parent={
+            ConversationHandler.END: ConversationState.CHANGE_SETTINGS
+        },
+        allow_reentry=True
+    )
+
     conv_handler2 = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(pattern="settings", callback=settings.change_settings),
@@ -359,10 +387,8 @@ def main():
             ConversationState.CHANGE_SETTINGS: [
                 CallbackQueryHandler(pattern="menage_apps", callback=settings.menage_apps),
                 CallbackQueryHandler(pattern="backup_restore", callback=settings.backup_and_restore),
-                conv_handler1
-            ],
-            ConversationState.BACKUP_MENU: [
-                CallbackQueryHandler(pattern="^create_backup$", callback=settings.backup_and_restore)
+                conv_handler1,
+                backup_restore_conv_handler
             ],
             ConversationState.MANAGE_APPS: [
                 add_app_conv_handler,

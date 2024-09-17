@@ -3,7 +3,6 @@ from time import sleep
 
 import pytz
 import requests
-import yaml
 from telegram import MessageEntity
 
 from decorators import send_action
@@ -379,7 +378,7 @@ async def menage_apps(update: Update, context: CallbackContext):
 async def backup_and_restore(update: Update, context: CallbackContext):
     cd = context.chat_data
     text = "💾 <b>Backup & Ripristino</b>\n\n"
-    if update.callback_query.data == "backup_restore":
+    if update.callback_query and update.callback_query.data == "backup_restore":
         if not await is_allowed_user_function(user_id=update.effective_user.id,
                                               users=context.bot_data["users"],
                                               permission="can_menage_backups"):
@@ -399,16 +398,6 @@ async def backup_and_restore(update: Update, context: CallbackContext):
 
             return ConversationState.CHANGE_SETTINGS
 
-        if len(cd["backups"]) == 0:
-            text += "ℹ️ Non hai nessun backup.\n\n🔸 Scegli un'opzione."
-        else:
-            text += f"ℹ️ Hai {len(cd['backups'])} file(s) di backup.\n\n🔍 <b>Informazioni</b>\n\n"
-            for backup in cd["backups"]:
-                b = cd["backups"][backup]
-                text += f"{backup}. <code>{b["file_name"]} (🕝 {b["backup_time"].strftime("%d %b %Y – %H:%M:%S")}\n"
-            text += ("🔸 Per visualizzare e/o ripristinare i dettagli di un backup, fornisci l'indice corrispondente."
-                     "Altrimenti, scegli un'opzione.")
-
         keyboard = [
             [
                 InlineKeyboardButton(text="➕ Crea Backup", callback_data="create_backup")
@@ -417,6 +406,16 @@ async def backup_and_restore(update: Update, context: CallbackContext):
                 InlineKeyboardButton(text="🔙 Menu Principale", callback_data="back_to_main_menu")
             ]
         ]
+
+        if len(cd["backups"]) == 0:
+            text += "ℹ️ Non hai nessun backup.\n\n🔸 Scegli un'opzione."
+        else:
+            text += f"ℹ️ Hai {len(cd['backups'])} file(s) di backup.\n\n🔍 <b>Informazioni</b>\n\n"
+            for backup in cd["backups"]:
+                b = cd["backups"][backup]
+                text += f"      {backup}. <code>{b["file_name"]}</code>\n"
+            text += ("\n🔸 Per <b>visualizzare</b>, <b>ripristinare</b> o <b>cancellare</b> un backup, "
+                     "scrivi l'indice corrispondente. Altrimenti, scegli un'opzione.")
 
         await parse_conversation_message(context=context, data={
             "chat_id": update.effective_chat.id,
@@ -427,12 +426,75 @@ async def backup_and_restore(update: Update, context: CallbackContext):
 
         return ConversationState.BACKUP_MENU
 
-    if update.callback_query.data == "create_backup":
-        if not os.path.isdir(user_folder := ("backups" + str(update.effective_user.id))):
+    if update.message:
+        inp = int(''.join(filter(set('0123456789').__contains__, update.message.text)))
+        if inp >= (max_index := len(cd["backups"])):
+            text = f"❌ Fornisci un indice valido, compreso tra 0 e {max_index}"
+            message = await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+            await schedule_messages_to_delete(context=context, messages={
+                message.id: {
+                    "chat_id": update.effective_chat.id,
+                    "time": 1.5
+                }
+            })
+            return ConversationState.BACKUP_MENU
+
+        fl = cd["backups"][inp]
+        path = "backups/" + str(update.effective_chat.id) + "/" + fl["file_name"]
+        if not os.path.isfile(path):
+            text += ("❌ Il file non è stato trovato. È possibile che @Linxay lo abbia eliminato. "
+                     "Il file verrà tolto dall'elenco.\n\n"
+                     "🔸 Scegli un'opzione")
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🆘 Contatta @Linxay", url="https://t.me/Linxay"),
+                    InlineKeyboardButton(text="🔙 Torna indietro", callback_data="backup_restore")
+                ]
+            ]
+            await send_message_with_typing_action(data={
+                "chat_id": update.effective_chat.id,
+                "text": text,
+                "keyboard": keyboard,
+                "message_id": update.effective_message.id
+            }, context=context)
+
+            return ConversationState.BACKUP_MENU
+
+        text += (f"📁 File Name: <code>{fl['file_name']}\n\n"
+                 f"🔸 Scegli un'opzione")
+        keyboard = [
+            [
+                InlineKeyboardButton(text="🗄 Scarica il file",
+                                     callback_data="download_backup_file " + path),
+                InlineKeyboardButton(text="♻️ Cancella il backup", callback_data="delete_backup " + path)
+            ],
+            [
+                InlineKeyboardButton(text="⌚️ Ripristina Backup", callback_data="restore_backup " + path)
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+            ]
+        ]
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "message_id": update.effective_message.id
+        }, context=context)
+
+        return ConversationState.BACKUP_SELECTED
+
+    if update.callback_query and update.callback_query.data == "create_backup":
+        if not os.path.isdir(user_folder := ("backups/" + str(update.effective_user.id))):
             os.makedirs(user_folder)
         filename = datetime.now(pytz.timezone("Europe/Rome")).strftime("%d_%m_%Y_%H_%M_%S") + ".yml"
+        cd["backups"][len(cd["backups"]) + 1] = {}
+        cd["backups"][len(cd["backups"])]["file_name"] = filename
+        cd["backups"][len(cd["backups"])]["backup_time"] = datetime.now(pytz.timezone("Europe/Rome"))
 
         if not await yaml_dict_dumper(cd, path := (user_folder + "/" + filename)):
+            del cd["backups"][len(cd["backups"])]
+
             text += ("❌ <u>Il file di backup non è stato creato a cause di un errore</u>\n\n"
                      "Contatta @AleLntr per assitenza."
                      "🔸 Scegli un'opzione.")
@@ -454,20 +516,88 @@ async def backup_and_restore(update: Update, context: CallbackContext):
 
             return ConversationState.CHANGE_SETTINGS
         else:
-            cd["backups"][len(cd["backups"])+1]["file_name"] = filename
-            cd["backups"][len(cd["backups"])]["backup_time"] = datetime.now(pytz.timezone("Europe/Rome"))
-
-            text += ("☑️ <u>Backup creato con successo</u>\n\n"
-                     f"📂 <u>File Folder</u> <code>{path}</code>\n\n")
+            text += ("☑️ <i>Backup creato con successo</i>\n\n"
+                     f"📂 File: <code>{filename}</code>\n\n"
+                     "🔸 Scegli un'opzione")
             keyboard = [
                 [
-                    InlineKeyboardButton("🗄 Scarica il file in locale",
+                    InlineKeyboardButton(text="🗄 Scarica il file",
                                          callback_data="download_backup_file " + path),
-                    InlineKeyboardButton
+                    InlineKeyboardButton(text="📄 Lista backups", callback_data="backup_restore")
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="back_to_main_menu")
                 ]
             ]
 
+            await send_message_with_typing_action(data={
+                "chat_id": update.effective_chat.id,
+                "text": text,
+                "keyboard": keyboard,
+                "message_id": update.effective_message.id
+            }, context=context)
 
+            return ConversationState.BACKUP_COMPLETED
+
+    if update.callback_query and update.callback_query.data.startswith("download_backup_file"):
+        keyboard = [
+            [
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+            ]
+        ]
+        text = ("🗃 <b>Ecco il file</b>\n\n"
+                "⚠️ @Linxay può vedere e gestire questo file in ogni momento.\n\n"
+                "🔸 Scegli un'opzione")
+
+        path = update.callback_query.data.split(" ")[1]
+
+        await send_message_with_typing_action(data={
+            "file_path": path,
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "message_id": update.effective_message.id
+        }, context=context, action=ChatAction.UPLOAD_DOCUMENT)
+
+        return ConversationState.CHANGE_SETTINGS
+
+    if update.callback_query and update.callback_query.data.startswith("delete_backup"):
+        path = update.callback_query.data.split(" ")[1]
+        file_name = path.split("/")[-1]
+        text += (f"📁 File Name: <code>{file_name}</code>\n\n"
+                 "❓ Confermi la rimozione di questo file? Se confermi, non potrai più recuperarlo.")
+
+        keyboard = [
+            [
+                InlineKeyboardButton(text="🚮 Elimina", callback_data="confirm_delete_backup " + path)
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+            ]
+        ]
+
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "message_id": update.effective_message.id
+        }, context=context)
+
+        return ConversationState.BACKUP_DELETE
+
+    if update.callback_query and update.callback_query.data.startswith("confirm_delete_backup"):
+        path = update.callback_query.data.split(" ")[1]
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            text += ("❌ Il file non è stato trovato. È possibile che @Linxay lo abbia già rimosso.\n\n"
+                     "🔸 Scegli un'opzione")
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🆘 Contatta @Linxay", url="https://t.me/AleLntr")
+
+                ]
+            ]
 
 
 async def close_menu(update: Update, context: CallbackContext):
@@ -792,13 +922,13 @@ async def set_app(update: Update, context: CallbackContext):
             await delete_message(context=context, chat_id=update.effective_chat.id,
                                  message_id=cd["edit_message"])
             del cd["edit_message"]
-        ap = cd["apps"][cd["app_index_to_edit"]]
+        ap = cd["apps"][int(cd["app_index_to_edit"])]
         cd["setting_app"] = {
-            "title": ap["title"],
-            "url": ap["url"],
+            "app_name": ap["app_name"],
+            "app_link": ap["app_link"],
             "current_version": ap["current_version"],
             "last_update": ap["last_update"],
-            "appId": ap["appId"]
+            "app_id": ap["app_id"]
         }
 
         cd["editing"] = True
@@ -888,7 +1018,7 @@ async def set_app(update: Update, context: CallbackContext):
 
     else:
         if update.callback_query and update.callback_query.data == "edit_set_default_values":
-            index = cd["app_index_to_edit"]
+            index = int(cd["app_index_to_edit"])
             cd["apps"][index]["check_interval"] = cd["settings"]["default_check_interval"]
             cd["apps"][index]["send_on_check"] = cd["settings"]["default_send_on_check"]
             return await schedule_app_check(cd, True, update, context)
@@ -1015,7 +1145,7 @@ async def set_app(update: Update, context: CallbackContext):
 
             ap = cd["apps"][len(cd["apps"])]
         else:
-            ap = cd["apps"][cd["app_index_to_edit"]]
+            ap = cd["apps"][int(cd["app_index_to_edit"])]
 
         ap["check_interval"] = cd["setting_app"]["check_interval"]
 
@@ -1500,19 +1630,6 @@ async def see_app_settings(update: Update, context: CallbackContext):
         await context.bot.edit_message_reply_markup(chat_id=update.effective_chat.id,
                                                     message_id=message.id,
                                                     reply_markup=InlineKeyboardMarkup(keyboard))
-
-
-async def schedule_messages_to_delete(context: CallbackContext, messages: dict):
-    for message in messages:
-        await check_dict_keys(messages[message], ["time", "chat_id"])
-        time, chat_id = messages[message]["time"], messages[message]["chat_id"]
-
-        context.job_queue.run_once(callback=job_queue.scheduled_delete_message,
-                                   data={
-                                       "message_id": int(message),
-                                       "chat_id": chat_id
-                                   },
-                                   when=time)
 
 
 async def get_app_details_with_link(link: str):
