@@ -154,8 +154,7 @@ async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (f"🔹 Ciao padrone {update.effective_user.first_name}!\n\n"
             f"Sono il bot che controlla gli aggiornamenti delle applicazioni sul Play Store.\n\n"
             f"Scegli un'opzione ⬇")
-    if update.callback_query and (update.callback_query.data == "back_to_main_menu" or
-                                  update.callback_query.data == "from_backup_restore"):
+    if update.callback_query and update.callback_query.data == "from_backup_restore":
         keyboard.append([InlineKeyboardButton(text="🔐 Close Menu",
                                               callback_data="delete_message {}".format(update.effective_message.id))])
         await parse_conversation_message(context=context,
@@ -165,9 +164,11 @@ async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                              "reply_markup": InlineKeyboardMarkup(keyboard),
                                              "message_id": update.effective_message.message_id
                                          })
-    if update.callback_query and update.callback_query.data == "from_backup_restore":
         return ConversationHandler.END
     else:
+        if update.callback_query and update.callback_query.data == "back_to_main_menu":
+            await delete_message(chat_id=update.effective_chat.id, message_id=update.effective_message.message_id,
+                                 context=context)
         keyboard.append([InlineKeyboardButton(text="🔐 Close Menu", callback_data="delete_message {}")])
         await send_message_with_typing_action(data={
                                        "chat_id": update.effective_chat.id,
@@ -176,7 +177,7 @@ async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                        "close_button": [2, 1]
                                    }, context=context)
 
-    return ConversationState.CHANGE_SETTINGS
+        return ConversationState.CHANGE_SETTINGS
 
 
 async def initialize_chat_data(update: Update, context: CallbackContext):
@@ -268,6 +269,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
     cd["last_checks"] = []
     cd["first_boot"] = True
     cd["backups"] = {}
+    cd["temp"] = {}
 
     if os.path.isdir(user_folder := ("backups/" + str(update.effective_user.id))):
         l = glob.glob(user_folder + "/*.yml")
@@ -692,6 +694,10 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
 
 async def yaml_dict_dumper(cd: dict, filepath: str) -> bool:
     return serialize_dict_to_yaml(cd, filepath)
+
+
+async def yaml_dict_loader(filepath: str):
+    return deserialize_dict_from_yaml(filepath)
 
 
 async def schedule_messages_to_delete(context: CallbackContext, messages: dict):

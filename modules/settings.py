@@ -268,7 +268,8 @@ async def change_settings(update: Update, context: CallbackContext):
                                          "reply_markup": InlineKeyboardMarkup(keyboard)}
                                      )
 
-    return (ConversationState.CHANGE_SETTINGS if update.callback_query.data != "cancel_edit_settings"
+    return (ConversationState.CHANGE_SETTINGS if (update.callback_query.data != "cancel_edit_settings"
+                                                  and update.callback_query.data != "from_backup_restore")
             else ConversationHandler.END)
 
 
@@ -403,7 +404,7 @@ async def backup_and_restore(update: Update, context: CallbackContext):
                 InlineKeyboardButton(text="➕ Crea Backup", callback_data="create_backup")
             ],
             [
-                InlineKeyboardButton(text="🔙 Menu Principale", callback_data="back_to_main_menu")
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="from_backup_restore")
             ]
         ]
 
@@ -417,27 +418,37 @@ async def backup_and_restore(update: Update, context: CallbackContext):
             text += ("\n🔸 Per <b>visualizzare</b>, <b>ripristinare</b> o <b>cancellare</b> un backup, "
                      "scrivi l'indice corrispondente. Altrimenti, scegli un'opzione.")
 
-        await parse_conversation_message(context=context, data={
+        message_id = await parse_conversation_message(context=context, data={
             "chat_id": update.effective_chat.id,
             "text": text,
             "reply_markup": InlineKeyboardMarkup(keyboard),
             "message_id": update.effective_message.id
         })
 
+        cd["message_to_delete"] = message_id
+
         return ConversationState.BACKUP_MENU
 
     if update.message:
         inp = int(''.join(filter(set('0123456789').__contains__, update.message.text)))
-        if inp >= (max_index := len(cd["backups"])):
+        if inp > (max_index := len(cd["backups"])):
             text = f"❌ Fornisci un indice valido, compreso tra 0 e {max_index}"
             message = await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
             await schedule_messages_to_delete(context=context, messages={
                 message.id: {
                     "chat_id": update.effective_chat.id,
                     "time": 1.5
+                },
+                update.effective_message.id: {
+                    "chat_id": update.effective_chat.id,
+                    "time": 2.5
                 }
             })
             return ConversationState.BACKUP_MENU
+
+        if "message_to_delete" in cd:
+            await delete_message(context=context, chat_id=update.effective_chat.id, message_id=cd["message_to_delete"])
+            del cd["message_to_delete"]
 
         fl = cd["backups"][inp]
         path = "backups/" + str(update.effective_chat.id) + "/" + fl["file_name"]
@@ -460,7 +471,7 @@ async def backup_and_restore(update: Update, context: CallbackContext):
 
             return ConversationState.BACKUP_MENU
 
-        text += (f"📁 File Name: <code>{fl['file_name']}\n\n"
+        text += (f"📁 File Name: <code>{fl['file_name']}</code>\n\n"
                  f"🔸 Scegli un'opzione")
         keyboard = [
             [
@@ -469,7 +480,7 @@ async def backup_and_restore(update: Update, context: CallbackContext):
                 InlineKeyboardButton(text="♻️ Cancella il backup", callback_data="delete_backup " + path)
             ],
             [
-                InlineKeyboardButton(text="⌚️ Ripristina Backup", callback_data="restore_backup " + path)
+                InlineKeyboardButton(text="🔄️ Ripristina Backup", callback_data="restore_backup " + path)
             ],
             [
                 InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
@@ -526,7 +537,7 @@ async def backup_and_restore(update: Update, context: CallbackContext):
                     InlineKeyboardButton(text="📄 Lista backups", callback_data="backup_restore")
                 ],
                 [
-                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="back_to_main_menu")
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="from_backup_restore")
                 ]
             ]
 
@@ -587,17 +598,84 @@ async def backup_and_restore(update: Update, context: CallbackContext):
 
     if update.callback_query and update.callback_query.data.startswith("confirm_delete_backup"):
         path = update.callback_query.data.split(" ")[1]
+        filename = path.split("/")[-1]
+        keyboard = [
+            [
+                InlineKeyboardButton(text="🆘 Contatta @Linxay", url="https://t.me/Linxay"),
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+            ]
+        ]
         try:
             os.remove(path)
+            for k, v in cd["backups"].items():
+                if v["file_name"] == filename:
+                    for k1, v1 in cd["backups"].items():
+                        if k1 >= k:
+                            cd["backups"][k] = cd["backups"][k1]
+                            k += 1
+                    del cd["backups"][len(cd["backups"])]
+                    break
         except FileNotFoundError:
             text += ("❌ Il file non è stato trovato. È possibile che @Linxay lo abbia già rimosso.\n\n"
                      "🔸 Scegli un'opzione")
+        except OSError as e:
+            settings_logger.error(f"OSError: {e}; non è possibile cancellare il file.")
+            text += ("❌ Non è stato possibile cancellare il file a causa di un errore del sistema operativo.\n\n"
+                     "🔸 Scegli un'opzione")
+        else:
             keyboard = [
                 [
-                    InlineKeyboardButton(text="🆘 Contatta @Linxay", url="https://t.me/AleLntr")
-
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
                 ]
             ]
+            text += "☑️ Il file è stato rimosso con successo."
+
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "message_id": update.effective_message.id
+        }, context=context)
+
+        return ConversationState.BACKUP_DELETE
+
+    if update.callback_query and update.callback_query.data.startswith("restore_backup"):
+        path = update.callback_query.data.split(" ")[1]
+        file_name = path.split("/")[-1]
+        text += (f"📁 File Name: <code>{file_name}</code>\n\n"
+                 "ℹ️ Le tue <b>applicazioni</b> e le tue <b>impostazioni</b>, compresi gli ultimi check, "
+                 "verranno <u>sostituite</u> con quelle contenute nel file.\n\n"
+                 "❔ Desideri procedere?")
+        keyboard = [
+            [
+                InlineKeyboardButton(text="🔄️ Ripristina", callback_data="confirm_restore_backup " + path)
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+            ]
+        ]
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "message_id": update.effective_message.id
+        }, context=context)
+
+        return ConversationState.BACKUP_RESTORE
+
+    if update.callback_query and update.callback_query.data.startswith("confirm_restore_backup"):
+        if not (new_cd := await yaml_dict_loader(update.callback_query.data.split(" ")[1])):
+            text += ("❌ Qualcosa è andato storto nel processo di ripristino. Nessuna modifica è stata applicata.\n\n"
+                     "🔸 Scegli un'opzione")
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🆘 Contatta @Linxay", url="https://t.me/Linxay"),
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+                ]
+            ]
+        else:
+            cd = new_cd
+            pass
 
 
 async def close_menu(update: Update, context: CallbackContext):

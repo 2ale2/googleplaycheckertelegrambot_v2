@@ -49,7 +49,12 @@ def serialize_timedelta(td):
 
 
 def deserialize_timedelta(dct):
-    return datetime.timedelta(**(dct.pop("__type__")))
+    dct.pop("__type__")
+    try:
+        return datetime.timedelta(**dct)
+    except TypeError as e:
+        br_logger.error(f"Error in creating timedelta instance from dict: {dct}. Error: {e}")
+        raise yaml.YAMLError("Error in creating timedelta instance from dict")
 
 
 register_class(datetime.timedelta, serialize_timedelta, deserialize_timedelta)
@@ -81,4 +86,10 @@ def serialize_dict_to_yaml(data, filepath) -> bool:
 
 def deserialize_dict_from_yaml(filepath):
     with open(filepath, "r") as f:
-        return yaml.load(f, Loader=CustomLoader)
+        try:
+            new_cd = yaml.load(f, Loader=CustomLoader)
+        except yaml.YAMLError as exc:
+            br_logger.error(f"Error loading data: {exc}")
+            return None
+        else:
+            return new_cd

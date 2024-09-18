@@ -12,7 +12,7 @@ from telegram.ext import (
     PicklePersistence,
     MessageHandler,
     filters,
-    Defaults
+    Defaults, TypeHandler
 )
 
 import settings
@@ -214,8 +214,13 @@ async def explore_handlers(matches: list, handler_s, update, level=0):
     return matches
 
 
-async def catch_update(update: Update):
-    print(update.to_json())
+async def catch_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_message and update.effective_message.text == "1":
+        print("here's a valid update. it should be handled by the following handler...")
+        if MessageHandler(filters=filters.TEXT, callback=settings.backup_and_restore).check_update(update):
+            print("...and it actually is!\n\n" + update.to_json() + "\n\n")
+        else:
+            print("...but it's not.")
 
 
 def main():
@@ -353,7 +358,7 @@ def main():
         states={
             ConversationState.BACKUP_MENU: [
                 CallbackQueryHandler(pattern="^create_backup$", callback=settings.backup_and_restore),
-                MessageHandler(filters.TEXT, callback=settings.backup_and_restore)
+                MessageHandler(filters=filters.TEXT, callback=settings.backup_and_restore)
             ],
             ConversationState.BACKUP_COMPLETED: [
                 CallbackQueryHandler(pattern="^download_backup_file.+$", callback=settings.backup_and_restore),
@@ -365,14 +370,14 @@ def main():
             ],
             ConversationState.BACKUP_DELETE: [
                 CallbackQueryHandler(pattern="^confirm_delete_backup.+$", callback=settings.backup_and_restore)
+            ],
+            ConversationState.BACKUP_RESTORE: [
+                CallbackQueryHandler(pattern="^confirm_restore_backup.+$", callback=settings.backup_and_restore)
             ]
         },
         fallbacks=[
-            CallbackQueryHandler(pattern="from_backup_restore", callback=settings.send_menu)
+            CallbackQueryHandler(pattern="from_backup_restore", callback=settings.change_settings)
         ],
-        map_to_parent={
-            ConversationHandler.END: ConversationState.CHANGE_SETTINGS
-        },
         allow_reentry=True
     )
 
@@ -386,7 +391,6 @@ def main():
         states={
             ConversationState.CHANGE_SETTINGS: [
                 CallbackQueryHandler(pattern="menage_apps", callback=settings.menage_apps),
-                CallbackQueryHandler(pattern="backup_restore", callback=settings.backup_and_restore),
                 conv_handler1,
                 backup_restore_conv_handler
             ],
