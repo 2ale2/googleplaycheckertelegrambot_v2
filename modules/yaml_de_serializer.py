@@ -49,7 +49,6 @@ def serialize_timedelta(td):
 
 
 def deserialize_timedelta(dct):
-    dct.pop("__type__")
     try:
         return datetime.timedelta(**dct)
     except TypeError as e:
@@ -72,6 +71,22 @@ class CustomLoader(yaml.Loader):
     def construct_mapping(self, node, deep=False):
         mapping = super().construct_mapping(node, deep=deep)
         return custom_deserializer(mapping)
+
+
+def timedelta_constructor(loader, node):
+    value = loader.construct_mapping(node, deep=True)
+    return deserialize_timedelta(value)
+
+
+def timedelta_representer(dumper, value):
+    return dumper.represent_mapping('!timedelta', {
+        'days': value.days,
+        'seconds': value.seconds,
+    })
+
+
+yaml.add_constructor('!timedelta', timedelta_constructor, Loader=CustomLoader)
+yaml.add_representer(datetime.timedelta, timedelta_representer)
 
 
 def serialize_dict_to_yaml(data, filepath) -> bool:
