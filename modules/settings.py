@@ -674,8 +674,25 @@ async def backup_and_restore(update: Update, context: CallbackContext):
                 ]
             ]
         else:
-            cd = new_cd
-            pass
+            context.chat_data.update(new_cd)
+            text += ("✅ <i>Backup correttamente ripristinato</i>\n\n"
+                     "🔸 Scegli un'opzione")
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Menù Impostazioni", callback_data="from_backup_restore")
+                ]
+            ]
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "message_id": update.effective_message.id
+        }, context=context)
+
+        return
 
 
 async def close_menu(update: Update, context: CallbackContext):
