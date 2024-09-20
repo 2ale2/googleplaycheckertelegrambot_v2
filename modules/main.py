@@ -30,7 +30,7 @@ bot_logger = logging.getLogger("bot_logger")
 bot_logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler = handlers.RotatingFileHandler(filename="logs/main.log",
-                                            maxBytes=1024, backupCount=1)
+                                            maxBytes=1024*1024*10, backupCount=1)
 file_handler.setFormatter(formatter)
 bot_logger.addHandler(file_handler)
 
@@ -99,7 +99,7 @@ async def set_bot_data(appl: Application) -> None:
     # noinspection PyUnresolvedReferences
     for cd in appl.chat_data:
         # noinspection PyUnresolvedReferences
-        await job_queue.reschedule(appl, appl.chat_data[cd])
+        await job_queue.reschedule(appl, appl.chat_data[cd], False)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -381,9 +381,30 @@ def main():
         allow_reentry=True
     )
 
+    user_menaging_conv_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(pattern="^user_menaging$", callback=settings.menage_users_and_permissions)
+        ],
+        states={
+            ConversationState.USERS_MENAGING_MENU: [
+                CallbackQueryHandler(pattern="^add_allowed_user$", callback=settings.menage_users_and_permissions),
+                CallbackQueryHandler(pattern="^remove_allowed_user$", callback=settings.menage_users_and_permissions),
+                CallbackQueryHandler(pattern="^edit_user_permissions$", callback=settings.menage_users_and_permissions),
+                CallbackQueryHandler(pattern="^edit_default_permissions$", callback=settings.menage_users_and_permissions),
+                CallbackQueryHandler(pattern="^list_users_permissions$", callback=settings.menage_users_and_permissions),
+            ],
+            ConversationState.ADD_ALLOWED_USER: [
+                MessageHandler(filters=filters.TEXT, callback=settings.menage_users_and_permissions)
+            ]
+        },
+        fallbacks=[
+
+        ]
+    )
+
     conv_handler2 = ConversationHandler(
         entry_points=[
-            CallbackQueryHandler(pattern="settings", callback=settings.change_settings),
+            CallbackQueryHandler(pattern="^settings$", callback=settings.change_settings),
             CallbackQueryHandler(pattern="^default_setting_finished.+$", callback=send_menu),
             CallbackQueryHandler(pattern="^first_configuration_completed.+$", callback=send_menu),
             CallbackQueryHandler(pattern="last_checks", callback=settings.list_last_checks)

@@ -3,6 +3,9 @@ permissions:
   can_manage_backups:
     button_text: "💾 Backup & Ripristino"
     button_data: "backup_restore"
+  can_manage_users:
+    button_text: "👤 Gestione Utenti e Permessi"
+    button_data: "user_menaging"
 texts:
   overall_functioning:
     owner: None

@@ -1,6 +1,10 @@
 ---
 allowed_users:
   6784285433:
+    username: @easter4rabbit
     can_manage_backups: True
+    tag: None
   7233636327:
+    username: None
     can_manage_backups: True
+    tag: 'Mia Madre'

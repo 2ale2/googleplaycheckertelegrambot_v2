@@ -51,6 +51,17 @@ async def get_functions_keyboard(update: Update, context: ContextTypes.DEFAULT_T
         ]
     ]
 
+    cd = context.chat_data
+
+    if cd["user_type"] == 'owner' or cd["user_type"] == 'admin':
+        for permission in context.bot_data["settings"]["permissions"]:
+            p = context.bot_data["settings"]["permissions"][permission]
+            button = InlineKeyboardButton(text=p["button_text"], callback_data=p["button_data"])
+            if len(keyboard) == 1 or len(keyboard[1]) == 2:
+                keyboard.insert(1, [button])
+            else:
+                keyboard[1].append(button)
+
     for permission in context.bot_data["settings"]["permissions"]:
         p = context.bot_data["settings"]["permissions"][permission]
         if await is_allowed_user_function(user_id=update.effective_user.id,
@@ -171,11 +182,11 @@ async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                  context=context)
         keyboard.append([InlineKeyboardButton(text="🔐 Close Menu", callback_data="delete_message {}")])
         await send_message_with_typing_action(data={
-                                       "chat_id": update.effective_chat.id,
-                                       "text": text,
-                                       "keyboard": keyboard,
-                                       "close_button": [2, 1]
-                                   }, context=context)
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "close_button": [2, 1]
+        }, context=context)
 
         return ConversationState.CHANGE_SETTINGS
 
@@ -252,6 +263,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
         for permission in context.bot_data["settings"]["permissions"]:
             cd["permissions"][permission] = bd["users"]["allowed"][user_id][permission]
 
+    cd["chat_id"] = update.effective_chat.id
     cd["apps"] = {}
     cd["settings"] = {
         "default_check_interval": {
@@ -711,3 +723,20 @@ async def schedule_messages_to_delete(context: CallbackContext, messages: dict):
                                        "chat_id": chat_id
                                    },
                                    when=time)
+
+
+async def send_not_allowed_function_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = ("❌ Non sei abilitato all'uso di questa funzione.\n\n"
+            "🔸 Scegli un'opzione")
+    keyboard = [
+        [
+            InlineKeyboardButton(text="🔙 Torna Indietro", callback_data='settings$')
+        ]
+    ]
+
+    await parse_conversation_message(data={
+        "chat_id": update.effective_chat.id,
+        "text": text,
+        "message_id": -1,
+        "reply_markup": InlineKeyboardMarkup(keyboard)
+    }, context=context)

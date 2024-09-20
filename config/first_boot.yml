@@ -1,6 +1,6 @@
 ---
 settings:
-  default_interval: 0m1d0h0min40s
+  default_interval: 0m1d0h0min20s
   default_send_on_check: True
 
 apps:

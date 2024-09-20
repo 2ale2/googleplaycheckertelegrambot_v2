@@ -7,7 +7,7 @@ br_logger = logging.getLogger('br_logger')
 br_logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler = handlers.RotatingFileHandler(filename="logs/formatter.log",
-                                            maxBytes=1024, backupCount=1)
+                                            maxBytes=1024*1024*10, backupCount=1)
 file_handler.setFormatter(formatter)
 br_logger.addHandler(file_handler)
 

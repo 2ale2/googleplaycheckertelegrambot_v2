@@ -12,12 +12,14 @@ from google_play_scraper.exceptions import NotFoundError
 
 import logging
 from logging import handlers
+from concurrent_log_handler import ConcurrentRotatingFileHandler
+
 
 job_queue_logger = logging.getLogger("job_queue_logger")
 job_queue_logger.setLevel(logging.WARN)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler = handlers.RotatingFileHandler(filename="logs/job_queue.log",
-                                            maxBytes=1024, backupCount=1)
+file_handler = ConcurrentRotatingFileHandler(filename="logs/job_queue.log", maxBytes=1024*1024*10, backupCount=1)
+
 file_handler.setFormatter(formatter)
 job_queue_logger.addHandler(file_handler)
 console_handler = logging.StreamHandler()
@@ -66,7 +68,6 @@ async def scheduled_send_message(context: ContextTypes.DEFAULT_TYPE):
                 close_buttons.append(close_button)
 
     if "file_path" in data:
-        file = True
         with open(data["file_path"], "rb") as f:
             message = await context.bot.send_document(chat_id=data["chat_id"],
                                                       document=f)
@@ -248,7 +249,7 @@ async def scheduled_app_check(context: ContextTypes.DEFAULT_TYPE):
             lc.append(last_check)
 
             message = await context.bot.send_message(
-                chat_id=WHO,
+                chat_id=cd["chat_id"],
                 text=text,
                 parse_mode="HTML"
             )
@@ -267,51 +268,60 @@ async def scheduled_app_check(context: ContextTypes.DEFAULT_TYPE):
                 ]
             ]
 
-            await context.bot.edit_message_reply_markup(chat_id=WHO,
+            await context.bot.edit_message_reply_markup(chat_id=cd["chat_id"],
                                                         message_id=message.id,
                                                         reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             job_queue_logger.info("No message is sent cause of app settings.")
 
 
-async def reschedule(ap: Application, cd: dict):
+async def reschedule(ap: Application | ContextTypes.DEFAULT_TYPE, cd: dict, from_restore: bool):
+    # riprogramma i controlli ti TUTTE le app sulla base dei parametri specificati in cd
     if "apps" in cd:
         li = []
         for a in cd["apps"]:
             i = cd["apps"][a]
+            for j in ap.job_queue.get_jobs_by_name(i["app_name"]):
+                j.schedule_removal()
             try:
                 if i["next_check"] - datetime.datetime.now(pytz.timezone('Europe/Rome')) < datetime.timedelta(0):
-                    ap.job_queue.run_once(callback=scheduled_app_check,
-                                          data={
-                                              "app_id": i["app_id"],
-                                              "app_link": i["app_link"],
-                                              "app_index": a
-                                          },
-                                          when=1,
-                                          name=i["app_name"])
+                    if not from_restore:
+                        ap.job_queue.run_once(callback=scheduled_app_check,
+                                              data={
+                                                  "app_id": i["app_id"],
+                                                  "app_link": i["app_link"],
+                                                  "app_index": a,
+                                                  "chat_data": cd
+                                              },
+                                              when=1,
+                                              name=i["app_name"])
                     ap.job_queue.run_repeating(callback=scheduled_app_check,
                                                interval=i["check_interval"]["timedelta"],
                                                data={
                                                    "app_id": i["app_id"],
                                                    "app_link": i["app_link"],
-                                                   "app_index": a
+                                                   "app_index": a,
+                                                   "chat_data": cd
                                                },
                                                name=i["app_name"])
                 else:
-                    ap.job_queue.run_once(callback=scheduled_app_check,
-                                          data={
-                                              "app_id": i["app_id"],
-                                              "app_link": i["app_link"],
-                                              "app_index": a
-                                          },
-                                          when=i["next_check"],
-                                          name=i["app_name"])
+                    if not from_restore:
+                        ap.job_queue.run_once(callback=scheduled_app_check,
+                                              data={
+                                                  "app_id": i["app_id"],
+                                                  "app_link": i["app_link"],
+                                                  "app_index": a,
+                                                  "chat_data": cd
+                                              },
+                                              when=i["next_check"],
+                                              name=i["app_name"])
                     ap.job_queue.run_repeating(callback=scheduled_app_check,
                                                interval=i["check_interval"]["timedelta"],
                                                data={
                                                    "app_id": i["app_id"],
                                                    "app_link": i["app_link"],
-                                                   "app_index": a
+                                                   "app_index": a,
+                                                   "chat_data": cd
                                                },
                                                first=i["next_check"] + i["check_interval"]["timedelta"],
                                                name=i["app_name"])
