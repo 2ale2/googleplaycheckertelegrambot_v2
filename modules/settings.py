@@ -753,7 +753,7 @@ async def menage_users_and_permissions(update: Update, context: ContextTypes.DEF
                 username = f"{bd['users']['allowed'][user]['username']} [<code>{user}</code>]"
             text += f"      {counter}. {username}\n"
 
-        text += "\n🔸 Scrivi lo <b>username</b> o l'<b>ID</b> dell'utente da aggiungere"
+        text += "\n🔸 Scrivi l'<b>ID</b> dell'utente da aggiungere"
 
         keyboard = [
             [
@@ -772,8 +772,8 @@ async def menage_users_and_permissions(update: Update, context: ContextTypes.DEF
 
     if not update.callback_query:
         if "adding_user" in cd:
-            if not (inp := update.message.text).startswith("@") and not inp.isnumeric():
-                text += "❌ Fonisci un nome utente nel formato <code>@username</code> o un ID utente"
+            if not (inp := update.message.text).isnumeric():
+                text += "❌ Fonisci un ID utente valido"
                 message_id = await parse_conversation_message(data={
                     "chat_id": update.effective_chat.id,
                     "text": text,
@@ -786,6 +786,151 @@ async def menage_users_and_permissions(update: Update, context: ContextTypes.DEF
                     }
                 }, context=context)
                 return ConversationState.ADD_ALLOWED_USER
+
+            try:
+                chat = context.bot.get_chat(inp)
+            except telegram.error.TelegramError:
+                text += "🤔 Non trovo questo ID utente. Prova a rimandarlo, altrimenti contatta @AleLntr"
+                keyboard = [
+                    [
+                        InlineKeyboardButton(text="🆘 Contatta @AleLntr", url="https://t.me/AleLntr"),
+                        InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_menaging")
+                    ]
+                ]
+
+                message_id = await parse_conversation_message(data={
+                    "chat_id": update.effective_chat.id,
+                    "text": text,
+                    "message_id": -1,
+                    "reply_markup": InlineKeyboardMarkup(keyboard)
+                }, context=context)
+                await schedule_messages_to_delete(messages={
+                    message_id: {
+                        "chat_id": update.effective_chat.id,
+                        "time": 2
+                    }
+                }, context=context)
+
+                return ConversationState.ADD_ALLOWED_USER
+            else:
+                if is_allowed_user(chat.id, context.bot_data["users"]):
+                    text += ("⚠️ Questo utente è già abilitato\n\n"
+                             "🔸 Scegli un'opzione")
+                    keyboard = [
+                        [
+                            InlineKeyboardButton(text="✏️ Modifica permessi utente",
+                                                 callback_data="edit_user_permissions " + chat.id),
+                            InlineKeyboardButton(text="🆘 Contatta @AleLntr", url="https://t.me/AleLntr")
+                        ],
+                        [
+                            InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_menaging")
+                        ]
+                    ]
+                    await send_message_with_typing_action(data={
+                        "chat_id": update.effective_chat.id,
+                        "text": text,
+                        "keyboard": keyboard,
+                        "message_id": update.message.id
+                    }, context=context)
+                    return ConversationState.EDIT_USER
+
+                del cd["temp"]["adding_user"]
+                text += (f"👤 Ho trovato l'utente <code>{chat.id}</code>:"
+                         f"     🔹 <u>Username</u> {chat.username}\n"
+                         f"     🔹 <u>Nome</u> {chat.first_name}\n"
+                         f"     🔹 <u>Cognome</u> {chat.last_name}\n\n"
+                         "🔸 Confermi di voler aggiungere questo utente?\n\n")
+                keyboard = [
+                    [
+                        InlineKeyboardButton(text=f"➕ Aggiungi {chat.id}", callback_data="confirm_add_user " + chat.id)
+                    ],
+                    [
+                        InlineKeyboardButton(text="⚡ Aggiungi e usa permessi di default",
+                                             callback_data="confirm_add_user_default " + chat.id)
+                    ],
+                    [
+                        InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="add_allowed_user")
+                    ]
+                ]
+                await send_message_with_typing_action(data={
+                    "chat_id": update.effective_chat.id,
+                    "text": text,
+                    "keyboard": keyboard,
+                    "message_id": update.effective_message.id
+                }, context=context)
+                return ConversationState.ADD_ALLOWED_USER
+
+    if update.callback_query and update.callback_query.data.startswith("confirm_add_user"):
+        cd["temp"]["new_allowed_user"] = {
+            'user_id': update.callback_query.data.split(" ")[1],
+        }
+        for permission in bd["permissions"]:
+            cd["temp"]["new_allowed_user"][permission] = None
+
+        return await set_user_permissions(update, context)
+
+    if update.callback_query and update.callback_query.data.startswith("set_permission"):
+        new = cd['new_allowed_user']
+        bd["users"]["allowed"][(user_id := new.pop('user_id'))] = {**new}
+        text += (f"🔧 <b>Utente</b> <code>{user_id}</code> <b>settato correttamente</b>\n\n"
+                 f"🪄 <b>Permessi</b>\n\n")
+        for permission in bd["permissions"]:
+            text += (f"      🔹 <u>{' '.join([i.capitalize() for i in permission.split("_")])}</u> "
+                     f"<code>{new[permission]}</code>\n")
+        text += f"\n🔸 <b>Confermi di voler abilitare l'utente <code>{user_id}</code> all'uso di questo bot?</b>"
+        keyboard = [
+            [
+                InlineKeyboardButton(text="✅ Confermo", callback_data="confirm_add_settled_user"),
+                InlineKeyboardButton(text="❌ Annulla", callback_data="cancel_add_user " + user_id)
+            ]
+        ]
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "message_id": update.effective_message.id
+        }, context=context)
+
+        del cd["temp"]["new_allowed_user"]
+
+        return ConversationState.CONFIRM_SETTLED_USER
+
+
+async def set_user_permissions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cd = context.chat_data
+    bd = context.bot_data
+    data = update.callback_query.data
+
+    if update.callback_query and "true" in data:
+        cd["new_allowed_user"][data.split(" ")[1]] = True
+    else:
+        cd["new_allowed_user"][data.split(" ")[1]] = False
+
+    text = ("👤 <b>Gestione Utenti e Permessi</b>\n\n"
+            "🔏 <b>Impostazione Permessi Utente</b>\n\n")
+
+    for permission in (d := cd["temp"]["new_allowed_user"]):
+        if d[permission] is None:
+            pf = ' '.join([i.capitalize() for i in permission.split("_")])
+            question = bd["permissions"][permission]["permission_set_text"]
+            text += f"🔹 <b>{pf}<b> – {question}"
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="✅ True", callback_data="set_permission_true " + permission),
+                    InlineKeyboardButton(text="❌ False", callback_data="set_permission_false " + permission)
+
+                ]
+            ]
+            await send_message_with_typing_action(data={
+                "chat_id": update.effective_chat.id,
+                "text": text,
+                "keyboard": keyboard,
+                "message_id": update.effective_message.id
+            }, context=context)
+
+            return ConversationState.SET_USER_PERMISSION
+
+    return await menage_users_and_permissions(update, context)
 
 
 async def close_menu(update: Update, context: CallbackContext):

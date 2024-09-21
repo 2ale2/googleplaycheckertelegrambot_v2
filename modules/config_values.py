@@ -143,5 +143,8 @@ class ConversationState(Enum):
     # Users Menaging
     USERS_MENAGING_MENU = 24
     ADD_ALLOWED_USER = 25
+    EDIT_USER = 26
+    SET_USER_PERMISSION = 27
+    CONFIRM_SETTLED_USER = 28
 
     TO_BE_ENDED = 100

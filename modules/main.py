@@ -390,16 +390,28 @@ def main():
                 CallbackQueryHandler(pattern="^add_allowed_user$", callback=settings.menage_users_and_permissions),
                 CallbackQueryHandler(pattern="^remove_allowed_user$", callback=settings.menage_users_and_permissions),
                 CallbackQueryHandler(pattern="^edit_user_permissions$", callback=settings.menage_users_and_permissions),
-                CallbackQueryHandler(pattern="^edit_default_permissions$", callback=settings.menage_users_and_permissions),
+                CallbackQueryHandler(pattern="^edit_default_permissions$",
+                                     callback=settings.menage_users_and_permissions),
                 CallbackQueryHandler(pattern="^list_users_permissions$", callback=settings.menage_users_and_permissions),
             ],
             ConversationState.ADD_ALLOWED_USER: [
-                MessageHandler(filters=filters.TEXT, callback=settings.menage_users_and_permissions)
+                MessageHandler(filters=filters.TEXT, callback=settings.menage_users_and_permissions),
+                CallbackQueryHandler(pattern="^add_allowed_user$", callback=settings.menage_users_and_permissions),
+                CallbackQueryHandler(pattern="^confirm_add_user.+$", callback=settings.menage_users_and_permissions)
+            ],
+            ConversationState.EDIT_USER: [
+                CallbackQueryHandler(pattern="^edit_user_permissions.+$",
+                                     callback=settings.menage_users_and_permissions),
+                CallbackQueryHandler(pattern="^edit_user_permissions$", callback=settings.menage_users_and_permissions)
+            ],
+            ConversationState.SET_USER_PERMISSION: [
+                CallbackQueryHandler(pattern="^set_permission.+$", callback=settings.set_user_permissions)
             ]
         },
         fallbacks=[
 
-        ]
+        ],
+        allow_reentry=True
     )
 
     conv_handler2 = ConversationHandler(
