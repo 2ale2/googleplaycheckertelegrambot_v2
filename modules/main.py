@@ -12,7 +12,8 @@ from telegram.ext import (
     PicklePersistence,
     MessageHandler,
     filters,
-    Defaults, TypeHandler
+    Defaults,
+    TypeHandler
 )
 
 import settings
@@ -381,35 +382,30 @@ def main():
         allow_reentry=True
     )
 
-    user_menaging_conv_handler = ConversationHandler(
+    user_managing_conv_handler = ConversationHandler(
         entry_points=[
-            CallbackQueryHandler(pattern="^user_menaging$", callback=settings.menage_users_and_permissions)
+            CallbackQueryHandler(pattern="^user_managing$", callback=settings.manage_users_and_permissions)
         ],
         states={
-            ConversationState.USERS_MENAGING_MENU: [
-                CallbackQueryHandler(pattern="^add_allowed_user$", callback=settings.menage_users_and_permissions),
-                CallbackQueryHandler(pattern="^remove_allowed_user$", callback=settings.menage_users_and_permissions),
-                CallbackQueryHandler(pattern="^edit_user_permissions$", callback=settings.menage_users_and_permissions),
-                CallbackQueryHandler(pattern="^edit_default_permissions$",
-                                     callback=settings.menage_users_and_permissions),
-                CallbackQueryHandler(pattern="^list_users_permissions$", callback=settings.menage_users_and_permissions),
+            ConversationState.USERS_MANAGING_MENU: [
+                CallbackQueryHandler(pattern="add_allowed_user", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="remove_allowed_user", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="edit_user_permissions", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="edit_default_permissions", callback=settings.manage_users_and_permissions),
             ],
-            ConversationState.ADD_ALLOWED_USER: [
-                MessageHandler(filters=filters.TEXT, callback=settings.menage_users_and_permissions),
-                CallbackQueryHandler(pattern="^add_allowed_user$", callback=settings.menage_users_and_permissions),
-                CallbackQueryHandler(pattern="^confirm_add_user.+$", callback=settings.menage_users_and_permissions)
+            ConversationState.ADD_USER: [
+                MessageHandler(filters=filters.TEXT, callback=settings.manage_users_and_permissions)
             ],
-            ConversationState.EDIT_USER: [
-                CallbackQueryHandler(pattern="^edit_user_permissions.+$",
-                                     callback=settings.menage_users_and_permissions),
-                CallbackQueryHandler(pattern="^edit_user_permissions$", callback=settings.menage_users_and_permissions)
+            ConversationState.CONFIRM_USER: [
+                CallbackQueryHandler(pattern="^confirm_user.+$", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^add_allowed_user$", callback=settings.manage_users_and_permissions)
             ],
-            ConversationState.SET_USER_PERMISSION: [
-                CallbackQueryHandler(pattern="^set_permission.+$", callback=settings.set_user_permissions)
+            ConversationState.ADD_USER_LABEL: [
+                MessageHandler(filters=filters.TEXT, callback=settings.manage_users_and_permissions)
             ]
         },
         fallbacks=[
-
+            CallbackQueryHandler(pattern="^from_user_managing$", callback=settings.change_settings)
         ],
         allow_reentry=True
     )
@@ -425,7 +421,8 @@ def main():
             ConversationState.CHANGE_SETTINGS: [
                 CallbackQueryHandler(pattern="menage_apps", callback=settings.menage_apps),
                 conv_handler1,
-                backup_restore_conv_handler
+                backup_restore_conv_handler,
+                user_managing_conv_handler
             ],
             ConversationState.MANAGE_APPS: [
                 add_app_conv_handler,

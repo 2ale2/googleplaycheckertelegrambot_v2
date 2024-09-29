@@ -1,3 +1,4 @@
+import os
 from logging import handlers
 from time import sleep
 
@@ -13,7 +14,7 @@ settings_logger = logging.getLogger("settings_logger")
 settings_logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler = handlers.RotatingFileHandler(filename="logs/settings.log",
-                                            maxBytes=1024*1024*10, backupCount=1)
+                                            maxBytes=1024 * 1024 * 10, backupCount=1)
 file_handler.setFormatter(formatter)
 settings_logger.addHandler(file_handler)
 
@@ -270,7 +271,8 @@ async def change_settings(update: Update, context: CallbackContext):
                                      )
 
     return (ConversationState.CHANGE_SETTINGS if (update.callback_query.data != "cancel_edit_settings"
-                                                  and update.callback_query.data != "from_backup_restore")
+                                                  and update.callback_query.data != "from_backup_restore"
+                                                  and update.callback_query.data != "from_user_managing")
             else ConversationHandler.END)
 
 
@@ -703,22 +705,22 @@ async def backup_and_restore(update: Update, context: CallbackContext):
         return
 
 
-async def menage_users_and_permissions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed_user_function(user_id=update.effective_chat.id,
-                                    users=context.bot_data["users"],
-                                    permission='can_manage_users'):
+async def manage_users_and_permissions(update: Update, context: CallbackContext):
+    if not await is_allowed_user_function(user_id=update.effective_chat.id,
+                                          users=context.bot_data["users"],
+                                          permission='can_manage_users'):
         await send_not_allowed_function_message(update, context)
         return
 
     cd = context.chat_data
     bd = context.bot_data
-    text = "👤 <b>Gestione Utenti e Permessi</b>\n\n"
+    text = "👤 <b>Gestione Utenti & Permessi</b>\n\n"
 
-    if update.callback_query and update.callback_query.data == "user_menaging":
+    if update.callback_query and (update.callback_query.data == "user_managing"):
         text += ("🔹 Da questa sezione puoi gestire e visualizzare gli utenti ed i relativi permessi.\n\n"
-                 "ℹ️ Oltre ad <b>aggiungere</b> o </b>rimuovere<b> un utente per abilitarlo all'uso di questo bot, "
-                 "potrai anche specificare <b>quali funzioni</b> potranno usare.\n\n"
-                 "🔸 Scegli come usare questo enorme ed ineluttabile potere")
+                 "ℹ️ Oltre ad <b>aggiungere</b> o <b>rimuovere</b> un utente per abilitarlo all'uso di questo bot, "
+                 "potrai anche specificare <b>quali funzioni</b> un utente potrà usare.\n\n"
+                 "🔸 Scegli come usare questo enorme ed ineluttabile potere.")
         keyboard = [
             [
                 InlineKeyboardButton(text="➕ Aggiungi Utente", callback_data="add_allowed_user"),
@@ -738,162 +740,94 @@ async def menage_users_and_permissions(update: Update, context: ContextTypes.DEF
             "keyboard": keyboard,
             "message_id": update.effective_message.id
         }, context=context)
+        return ConversationState.USERS_MANAGING_MENU
 
-        return ConversationState.USERS_MENAGING_MENU
-
-    if update.callback_query and update.callback_query.data == "add_allowed_user":
-        cd["temp"]["adding_user"] = True
-        text += "➕ <u>Aggiungi Utente</u>\n\n"
-
-        for counter, user in enumerate(bd["users"]["allowed"], start=1):
-            if bd["users"]["allowed"][user]["username"] is None:
-                username = (f"<i>No Username</i> [<code>{user}</code>] – "
-                            f"#️⃣ {bd['users']['allowed'][user]['username']['tag']}")
-            else:
-                username = f"{bd['users']['allowed'][user]['username']} [<code>{user}</code>]"
-            text += f"      {counter}. {username}\n"
-
-        text += "\n🔸 Scrivi l'<b>ID</b> dell'utente da aggiungere"
-
+    if update.callback_query and (update.callback_query.data == "add_allowed_user"):
+        text += ("⚠️ <u>Non potrò fare alcuna verifica sull'esistenza degli ID che aggiungi.</u>\n\n"
+                 "🔸 Indica l'ID utente che vuoi aggiungere")
         keyboard = [
             [
-                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_menaging")
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_managing"),
             ]
         ]
-
-        await send_message_with_typing_action(data={
+        cd["temp"]["message_to_delete"] = await parse_conversation_message(data={
             "chat_id": update.effective_chat.id,
             "text": text,
-            "message_id": update.effective_message.id,
-            "keyboard": keyboard
+            "reply_keyboard": InlineKeyboardMarkup(keyboard),
+            "message_id": update.effective_message.id
         }, context=context)
-
-        return ConversationState.ADD_ALLOWED_USER
+        cd["temp"]["adding_user"] = True
+        return ConversationState.ADD_USER
 
     if not update.callback_query:
-        if "adding_user" in cd:
-            if not (inp := update.message.text).isnumeric():
-                text += "❌ Fonisci un ID utente valido"
-                message_id = await parse_conversation_message(data={
-                    "chat_id": update.effective_chat.id,
-                    "text": text,
-                    "message_id": -1
-                }, context=context)
-                await schedule_messages_to_delete(messages={
-                    message_id: {
-                        "chat_id": update.effective_chat.id,
-                        "time": 2
-                    }
-                }, context=context)
-                return ConversationState.ADD_ALLOWED_USER
+        if "adding_user" in cd["temp"]:
+            uid = ''.join(update.effective_message.text.split(" "))
 
-            try:
-                chat = context.bot.get_chat(inp)
-            except telegram.error.TelegramError:
-                text += "🤔 Non trovo questo ID utente. Prova a rimandarlo, altrimenti contatta @AleLntr"
+            if not uid.isnumeric():
+                text += ("❌ L'ID deve contenere solamente cifre.\n\n"
+                         "🔸 Rimanda lo user ID")
                 keyboard = [
                     [
-                        InlineKeyboardButton(text="🆘 Contatta @AleLntr", url="https://t.me/AleLntr"),
-                        InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_menaging")
+                        InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_managing")
                     ]
                 ]
 
-                message_id = await parse_conversation_message(data={
-                    "chat_id": update.effective_chat.id,
-                    "text": text,
-                    "message_id": -1,
-                    "reply_markup": InlineKeyboardMarkup(keyboard)
-                }, context=context)
-                await schedule_messages_to_delete(messages={
-                    message_id: {
-                        "chat_id": update.effective_chat.id,
-                        "time": 2
-                    }
-                }, context=context)
-
-                return ConversationState.ADD_ALLOWED_USER
-            else:
-                if is_allowed_user(chat.id, context.bot_data["users"]):
-                    text += ("⚠️ Questo utente è già abilitato\n\n"
-                             "🔸 Scegli un'opzione")
-                    keyboard = [
-                        [
-                            InlineKeyboardButton(text="✏️ Modifica permessi utente",
-                                                 callback_data="edit_user_permissions " + chat.id),
-                            InlineKeyboardButton(text="🆘 Contatta @AleLntr", url="https://t.me/AleLntr")
-                        ],
-                        [
-                            InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_menaging")
-                        ]
-                    ]
-                    await send_message_with_typing_action(data={
-                        "chat_id": update.effective_chat.id,
-                        "text": text,
-                        "keyboard": keyboard,
-                        "message_id": update.message.id
-                    }, context=context)
-                    return ConversationState.EDIT_USER
-
-                del cd["temp"]["adding_user"]
-                text += (f"👤 Ho trovato l'utente <code>{chat.id}</code>:"
-                         f"     🔹 <u>Username</u> {chat.username}\n"
-                         f"     🔹 <u>Nome</u> {chat.first_name}\n"
-                         f"     🔹 <u>Cognome</u> {chat.last_name}\n\n"
-                         "🔸 Confermi di voler aggiungere questo utente?\n\n")
-                keyboard = [
-                    [
-                        InlineKeyboardButton(text=f"➕ Aggiungi {chat.id}", callback_data="confirm_add_user " + chat.id)
-                    ],
-                    [
-                        InlineKeyboardButton(text="⚡ Aggiungi e usa permessi di default",
-                                             callback_data="confirm_add_user_default " + chat.id)
-                    ],
-                    [
-                        InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="add_allowed_user")
-                    ]
-                ]
                 await send_message_with_typing_action(data={
                     "chat_id": update.effective_chat.id,
                     "text": text,
-                    "keyboard": keyboard,
-                    "message_id": update.effective_message.id
+                    "keyboard": keyboard
                 }, context=context)
-                return ConversationState.ADD_ALLOWED_USER
 
-    if update.callback_query and update.callback_query.data.startswith("confirm_add_user"):
-        cd["temp"]["new_allowed_user"] = {
-            'user_id': update.callback_query.data.split(" ")[1],
-        }
-        for permission in bd["permissions"]:
-            cd["temp"]["new_allowed_user"][permission] = None
+                return ConversationState.ADD_USER
 
-        return await set_user_permissions(update, context)
+            await schedule_messages_to_delete(messages={
+                cd["temp"]["message_to_delete"]: {
+                    "chat_id": update.effective_chat.id,
+                    "time": 1
+                },
+                update.effective_message.id: {
+                    "chat_id": update.effective_chat.id,
+                    "time": 1
+                }
+            }, context=context)
+            del cd["temp"]["message_to_delete"]
 
-    if update.callback_query and update.callback_query.data.startswith("set_permission"):
-        new = cd['new_allowed_user']
-        bd["users"]["allowed"][(user_id := new.pop('user_id'))] = {**new}
-        text += (f"🔧 <b>Utente</b> <code>{user_id}</code> <b>settato correttamente</b>\n\n"
-                 f"🪄 <b>Permessi</b>\n\n")
-        for permission in bd["permissions"]:
-            text += (f"      🔹 <u>{' '.join([i.capitalize() for i in permission.split("_")])}</u> "
-                     f"<code>{new[permission]}</code>\n")
-        text += f"\n🔸 <b>Confermi di voler abilitare l'utente <code>{user_id}</code> all'uso di questo bot?</b>"
+            text += (f"🔸 Verifica la correttezza dell'ID <code>{uid}</code>: "
+                     f"confermi di voler aggiungere questo utente?")
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="☑️ Confermo", callback_data="confirm_user " + uid),
+                    InlineKeyboardButton(text="✖️ Non confermo", callback_data="add_allowed_user")
+                ]
+            ]
+
+            await send_message_with_typing_action(data={
+                "chat_id": update.effective_chat.id,
+                "text": text,
+                "keyboard": keyboard,
+            }, context=context)
+
+            return ConversationState.CONFIRM_USER
+
+    if update.callback_query and update.callback_query.data.startswith("confirm_user"):
+        cd["temp"]["adding_user"] = update.callback_query.data.split(" ")[1]
+        text += ("🔸 A chi appartiene questo ID? Specifica un tag da assegnare all'utente\n\n"
+                 "🔍 <u>Alcuni Esempi</u>: <i>Mia Madre</i>, <i>Schiavo #1</i>")
         keyboard = [
             [
-                InlineKeyboardButton(text="✅ Confermo", callback_data="confirm_add_settled_user"),
-                InlineKeyboardButton(text="❌ Annulla", callback_data="cancel_add_user " + user_id)
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_managing")
             ]
         ]
-        await send_message_with_typing_action(data={
+        cd["temp"]["message_to_delete"] = await parse_conversation_message(data={
             "chat_id": update.effective_chat.id,
             "text": text,
-            "keyboard": keyboard,
+            "reply_keyboard": InlineKeyboardMarkup(keyboard),
             "message_id": update.effective_message.id
         }, context=context)
+        cd["temp"]["user_label"] = True
+        return ConversationState.ADD_USER_LABEL
 
-        del cd["temp"]["new_allowed_user"]
 
-        return ConversationState.CONFIRM_SETTLED_USER
 
 
 async def set_user_permissions(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -930,7 +864,7 @@ async def set_user_permissions(update: Update, context: ContextTypes.DEFAULT_TYP
 
             return ConversationState.SET_USER_PERMISSION
 
-    return await menage_users_and_permissions(update, context)
+    return await manage_users_and_permissions(update, context)
 
 
 async def close_menu(update: Update, context: CallbackContext):

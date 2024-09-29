@@ -2,6 +2,9 @@
 settings:
   default_interval: 0m1d0h0min20s
   default_send_on_check: True
+  defualt_permissions:
+    can_manage_backups: True
+    can_manage_users: False
 
 apps:
   1:

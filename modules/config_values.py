@@ -140,11 +140,10 @@ class ConversationState(Enum):
     BACKUP_DELETE = 22
     BACKUP_RESTORE = 23
 
-    # Users Menaging
-    USERS_MENAGING_MENU = 24
-    ADD_ALLOWED_USER = 25
-    EDIT_USER = 26
-    SET_USER_PERMISSION = 27
-    CONFIRM_SETTLED_USER = 28
+    # User Menaging
+    USERS_MANAGING_MENU = 24
+    ADD_USER = 25
+    CONFIRM_USER = 26
+    ADD_USER_LABEL = 27
 
     TO_BE_ENDED = 100

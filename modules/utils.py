@@ -61,20 +61,20 @@ async def get_functions_keyboard(update: Update, context: ContextTypes.DEFAULT_T
                 keyboard.insert(1, [button])
             else:
                 keyboard[1].append(button)
+    else:
+        for permission in context.bot_data["settings"]["permissions"]:
+            p = context.bot_data["settings"]["permissions"][permission]
+            if await is_allowed_user_function(user_id=update.effective_user.id,
+                                              users=context.bot_data["users"],
+                                              permission=permission):
+                button = InlineKeyboardButton(text=p["button_text"], callback_data=p["button_data"])
+            else:
+                button = InlineKeyboardButton(text=p["button_text"] + " ⛔️", callback_data=p["button_data"])
 
-    for permission in context.bot_data["settings"]["permissions"]:
-        p = context.bot_data["settings"]["permissions"][permission]
-        if await is_allowed_user_function(user_id=update.effective_user.id,
-                                          users=context.bot_data["users"],
-                                          permission=permission):
-            button = InlineKeyboardButton(text=p["button_text"], callback_data=p["button_data"])
-        else:
-            button = InlineKeyboardButton(text=p["button_text"] + " ⛔️", callback_data=p["button_data"])
-
-        if len(keyboard) == 1 or len(keyboard[1]) == 2:
-            keyboard.insert(1, [button])
-        else:
-            keyboard[1].append(button)
+            if len(keyboard) == 1 or len(keyboard[1]) == 2:
+                keyboard.insert(1, [button])
+            else:
+                keyboard[1].append(button)
 
     keyboard.append([InlineKeyboardButton(text="🔙 Menu Principale", callback_data="back_to_main_menu")])
 
@@ -292,6 +292,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
             file_name = file_name.split(".yml")[0]
             cd["backups"][len(cd["backups"])]["backup_time"] = datetime.strptime(file_name,
                                                                                  "%d_%m_%Y_%H_%M_%S")
+
     if "editing" in cd:
         del cd["editing"]
     if "adding" in cd:
@@ -715,14 +716,14 @@ async def yaml_dict_loader(filepath: str):
 async def schedule_messages_to_delete(context: CallbackContext, messages: dict):
     for message in messages:
         await check_dict_keys(messages[message], ["time", "chat_id"])
-        time, chat_id = messages[message]["time"], messages[message]["chat_id"]
+        t, chat_id = messages[message]["time"], messages[message]["chat_id"]
 
         context.job_queue.run_once(callback=job_queue.scheduled_delete_message,
                                    data={
                                        "message_id": int(message),
                                        "chat_id": chat_id
                                    },
-                                   when=time)
+                                   when=t)
 
 
 async def send_not_allowed_function_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
