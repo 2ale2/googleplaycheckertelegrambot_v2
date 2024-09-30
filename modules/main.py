@@ -19,6 +19,7 @@ from telegram.ext import (
 import settings
 import utils
 from decorators import send_action
+from modules.settings import set_user_permissions
 from utils import *
 
 logging.getLogger('httpx').setLevel(logging.WARNING)
@@ -388,10 +389,10 @@ def main():
         ],
         states={
             ConversationState.USERS_MANAGING_MENU: [
-                CallbackQueryHandler(pattern="add_allowed_user", callback=settings.manage_users_and_permissions),
-                CallbackQueryHandler(pattern="remove_allowed_user", callback=settings.manage_users_and_permissions),
-                CallbackQueryHandler(pattern="edit_user_permissions", callback=settings.manage_users_and_permissions),
-                CallbackQueryHandler(pattern="edit_default_permissions", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^add_allowed_user$", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^remove_allowed_user$", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^edit_user_permissions$", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^edit_default_permissions$", callback=settings.manage_users_and_permissions),
             ],
             ConversationState.ADD_USER: [
                 MessageHandler(filters=filters.TEXT, callback=settings.manage_users_and_permissions)
@@ -402,6 +403,14 @@ def main():
             ],
             ConversationState.ADD_USER_LABEL: [
                 MessageHandler(filters=filters.TEXT, callback=settings.manage_users_and_permissions)
+            ],
+            ConversationState.CONFIRM_LABEL: [
+                CallbackQueryHandler(pattern="^confirm_label$", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^rewrite_label$", callback=settings.manage_users_and_permissions)
+            ],
+            ConversationState.SET_PERMISSION: [
+                CallbackQueryHandler(pattern="^set_permission_true.+$", callback=set_user_permissions),
+                CallbackQueryHandler(pattern="^set_permission_false.+$", callback=set_user_permissions)
             ]
         },
         fallbacks=[

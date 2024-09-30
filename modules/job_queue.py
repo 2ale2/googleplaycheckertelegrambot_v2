@@ -11,7 +11,6 @@ from google_play_scraper import app
 from google_play_scraper.exceptions import NotFoundError
 
 import logging
-from logging import handlers
 from concurrent_log_handler import ConcurrentRotatingFileHandler
 
 
@@ -71,14 +70,14 @@ async def scheduled_send_message(context: ContextTypes.DEFAULT_TYPE):
         with open(data["file_path"], "rb") as f:
             message = await context.bot.send_document(chat_id=data["chat_id"],
                                                       document=f)
-        keyabord = [
+        keyboard = [
             [
                 InlineKeyboardButton(text="🔐 Close", callback_data=f"delete_message {message.id}")
             ]
         ]
         await context.bot.edit_message_reply_markup(chat_id=data["chat_id"],
                                                     message_id=message.id,
-                                                    reply_markup=InlineKeyboardMarkup(keyabord))
+                                                    reply_markup=InlineKeyboardMarkup(keyboard))
 
     try:
         web_preview = (not data["web_preview"] if "web_preview" in data else None)

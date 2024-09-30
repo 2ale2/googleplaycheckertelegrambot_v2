@@ -7,7 +7,7 @@ permissions:
   can_manage_users:
     permission_set_text: "L'utente potrà aggiungere e rimuovere altri utenti?\n\n☠️ <b>Usare con cautela</b>"
     button_text: "👤 Utenti e Permessi"
-    button_data: "user_menaging"
+    button_data: "user_managing"
 texts:
   overall_functioning:
     owner: None
