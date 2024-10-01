@@ -301,7 +301,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
         del cd["removing"]
 
     if os.path.isfile("config/first_boot.yml") and user_id == bd["users"]["owner"]:
-        with open("config/first_boot.yml", 'r') as f:
+        with (open("config/first_boot.yml", 'r') as f):
             try:
                 first_boot = yaml.safe_load(f)
             except yaml.YAMLError as exc:
@@ -311,9 +311,14 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                 # devono necessariamente essere presenti
                 if "settings" not in first_boot:
                     raise Exception("Missing key 'settings' in 'first_boot.yml' configuration file.")
-                for key in ['default_interval', 'default_send_on_check']:
+                for key in ['default_interval', 'default_send_on_check', 'default_permissions']:
                     if key not in first_boot["settings"]:
                         raise Exception(f"Missing key '{key}' in 'first_boot.yml' (settings) configuration file.")
+                for permission in context.bot_data["settings"]["permissions"]:
+                    if (permission != "can_manage_users"
+                        and permission not in first_boot["settings"]["default_permissions"]):
+                        raise Exception(f"Missing permission '{permission}' in 'first_boot.yml' "
+                                        f"(settings -> default_permissions) configuration file.")
                 if "apps" not in first_boot:
                     raise Exception("Missing key 'apps' in 'first_boot.yml' configuration file.")
                 for el in first_boot["apps"]:
@@ -352,6 +357,13 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                         f"    - <u>Interval</u>: <code>{first_boot['settings']['default_interval']}</code>\n"
                         f"    - <u>Send On Check</u>: <code>{first_boot['settings']['default_send_on_check']}"
                         f"</code>\n\n")
+
+                    text += "➡ <b>Default Permissions</b>\n"
+                    for permission in (p := first_boot['settings']['default_permissions']):
+                        text += (f"    - <u>{' '.join(cp.capitalize() for cp in permission.split("_"))}</u>: "
+                                 f"<code>{p[permission]}</code>\n")
+
+                    text += "    - <u>Can Manage Users</u>: <code>False</code>\n\n"
 
                     if len(first_boot['apps']):
                         text += "➡ <b>Apps</b>\n"
@@ -439,6 +451,13 @@ async def validate_send_on_check(value):
     return ValidateSendOnCheckOutcome.SUCCESS
 
 
+async def validate_permission(value):
+    if not isinstance(value, bool):
+        return ValidatePermission.INVALID_TYPE
+
+    return ValidatePermission.SUCCESS
+
+
 async def validate_app_config(app_config, conf: dict):
     if not isinstance(app_config, dict):
         return ValidateAppConfiguration.INVALID_TYPE
@@ -479,6 +498,13 @@ async def check_first_boot_configuration(conf: dict):
         soco = ValidateSendOnCheckOutcome.get_outcome(soco)
         bot_logger.warning(f"First Boot Configuration – Syntax Error: {soco}. Check the file.")
         return soco
+
+    for permission in (d := conf['settings']['default_permissions']):
+        po = await validate_permission(d[permission])
+        if po != ValidatePermission.SUCCESS:
+            po = ValidatePermission.get_outcome(po)
+            bot_logger.warning(f"First Boot Configuration – Syntax Error: {po}. Check the file.")
+            return po
 
     for app_index in conf['apps']:
         aco = await validate_app_config(conf['apps'][app_index], conf)
@@ -535,7 +561,15 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
 
     dci["timedelta"] = timedelta(days=values[0] * 30 + values[1], hours=values[2], minutes=values[3], seconds=values[4])
 
-    cd["settings"]["default_send_on_check"] = cd["first_boot_configuration"]["settings"]["default_send_on_check"]
+    cd["settings"]["default_send_on_check"] = \
+        (dp := cd["first_boot_configuration"]["settings"])["default_send_on_check"]
+
+    cd["settings"]["default_permissions"] = {}
+
+    for permission in dp["default_permissions"]:
+        cd["settings"]["default_permissions"][permission] = dp["default_permissions"][permission]
+
+    cd["settings"]["default_permissions"]["can_manage_users"] = False
 
     for app_index in (apps := cd["first_boot_configuration"]["apps"]):
         try:

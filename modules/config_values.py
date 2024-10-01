@@ -80,11 +80,11 @@ class ValidateAppConfiguration(ValidateResult):
     @staticmethod
     def from_interval_outcome(code):
         if code == ValidateAppConfiguration.INTERVAL_INVALID_FORMAT:
-            return ValidateAppConfiguration.INTERVAL_INVALID_FORMAT
+            return ValidateIntervalOutcome.INVALID_FORMAT
         if code == ValidateAppConfiguration.INTERVAL_MISSING_VALUES:
-            return ValidateAppConfiguration.INTERVAL_MISSING_VALUES
+            return ValidateIntervalOutcome.MISSING_VALUES
         if code == ValidateAppConfiguration.INTERVAL_NON_POSITIVE_VALUES:
-            return ValidateAppConfiguration.INTERVAL_NON_POSITIVE_VALUES
+            return ValidateIntervalOutcome.NON_POSITIVE_VALUES
 
     @staticmethod
     def get_outcome(code):
@@ -101,6 +101,21 @@ class ValidateAppConfiguration(ValidateResult):
         }
         message = messages.get(code, 'Errore Sconosciuto')
         return ValidateResult('app', code, message)
+
+
+class ValidatePermission(ValidateResult):
+    SUCCESS = 0
+    INVALID_TYPE = -4
+
+    @staticmethod
+    def get_outcome(code, field='default_permissions'):
+        # noinspection PyShadowingNames
+        messages = {
+            ValidateSendOnCheckOutcome.SUCCESS: f"Valore '{field}' valido",
+            ValidateSendOnCheckOutcome.INVALID_TYPE: f"'{field}' deve contenere valori booleani"
+        }
+        message = messages.get(code, 'Errore Sconosciuto')
+        return ValidateResult(field, code, message)
 
 
 class ConversationState(Enum):
@@ -148,5 +163,8 @@ class ConversationState(Enum):
     CONFIRM_LABEL = 28
 
     SET_PERMISSION = 29
+
+    REMOVE_USER = 30
+    CONFIRM_REMOVE_USER = 31
 
     TO_BE_ENDED = 100

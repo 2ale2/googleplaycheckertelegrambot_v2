@@ -410,7 +410,16 @@ def main():
             ],
             ConversationState.SET_PERMISSION: [
                 CallbackQueryHandler(pattern="^set_permission_true.+$", callback=set_user_permissions),
-                CallbackQueryHandler(pattern="^set_permission_false.+$", callback=set_user_permissions)
+                CallbackQueryHandler(pattern="^set_permission_false.+$", callback=set_user_permissions),
+                CallbackQueryHandler(pattern="^set_default_permissions$", callback=set_user_permissions)
+            ],
+
+            ConversationState.REMOVE_USER: [
+                MessageHandler(filters=filters.TEXT, callback=settings.manage_users_and_permissions)
+            ],
+            ConversationState.CONFIRM_REMOVE_USER: [
+                CallbackQueryHandler(pattern="^remove_allowed_user.+$", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^remove_allowed_user$", callback=settings.manage_users_and_permissions)
             ]
         },
         fallbacks=[
