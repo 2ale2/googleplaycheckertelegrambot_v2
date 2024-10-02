@@ -164,7 +164,8 @@ class ConversationState(Enum):
 
     SET_PERMISSION = 29
 
-    REMOVE_USER = 30
+    REMOVE_OR_EDIT_USER = 30
     CONFIRM_REMOVE_USER = 31
+    CONFIRM_EDIT_USER = 32
 
     TO_BE_ENDED = 100

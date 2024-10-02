@@ -37,7 +37,7 @@ async def is_allowed_user_function(user_id: int, users: dict, permission: str) -
     if user_id == users["admin"]:
         return True
 
-    if permission not in users["allowed"][user_id]:
+    if permission not in users["allowed"][user_id]["permissions"]:
         raise ValueError(f"Permission {permission} does not exist in {user_id} record.")
 
     return users["allowed"][user_id]["permissions"][permission]
@@ -261,7 +261,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
         cd["user_type"] = "allowed"
         cd["permissions"] = {}
         for permission in context.bot_data["settings"]["permissions"]:
-            cd["permissions"][permission] = bd["users"]["allowed"][user_id][permission]
+            cd["permissions"][permission] = bd["users"]["allowed"][user_id]["permissions"][permission]
 
     cd["chat_id"] = update.effective_chat.id
     cd["apps"] = {}
@@ -765,13 +765,13 @@ async def send_not_allowed_function_message(update: Update, context: ContextType
             "🔸 Scegli un'opzione")
     keyboard = [
         [
-            InlineKeyboardButton(text="🔙 Torna Indietro", callback_data='settings$')
+            InlineKeyboardButton(text="🔙 Torna Indietro", callback_data='settings')
         ]
     ]
 
     await parse_conversation_message(data={
         "chat_id": update.effective_chat.id,
         "text": text,
-        "message_id": -1,
+        "message_id": update.effective_message.id,
         "reply_markup": InlineKeyboardMarkup(keyboard)
     }, context=context)

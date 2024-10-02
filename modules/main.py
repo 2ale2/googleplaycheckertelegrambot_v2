@@ -19,7 +19,7 @@ from telegram.ext import (
 import settings
 import utils
 from decorators import send_action
-from modules.settings import set_user_permissions
+from modules.settings import set_user_permissions, manage_users_and_permissions
 from utils import *
 
 logging.getLogger('httpx').setLevel(logging.WARNING)
@@ -260,6 +260,10 @@ def main():
             3: [
                 CallbackQueryHandler(pattern="^default_send_on_check_true.+$", callback=settings.set_defaults),
                 CallbackQueryHandler(pattern="^default_send_on_check_false.+$", callback=settings.set_defaults)
+            ],
+            4: [
+                CallbackQueryHandler(pattern="^set_default_permission.+$", callback=settings.set_defaults),
+                CallbackQueryHandler(pattern="^default_settings_completed$", callback=settings.set_defaults)
             ]
         },
         fallbacks=[CallbackQueryHandler(pattern="cancel_edit_settings", callback=settings.change_settings)],
@@ -392,7 +396,10 @@ def main():
                 CallbackQueryHandler(pattern="^add_allowed_user$", callback=settings.manage_users_and_permissions),
                 CallbackQueryHandler(pattern="^remove_allowed_user$", callback=settings.manage_users_and_permissions),
                 CallbackQueryHandler(pattern="^edit_user_permissions$", callback=settings.manage_users_and_permissions),
-                CallbackQueryHandler(pattern="^edit_default_permissions$", callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^edit_default_permissions$",
+                                     callback=settings.manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^list_users_permissions$",
+                                     callback=settings.manage_users_and_permissions)
             ],
             ConversationState.ADD_USER: [
                 MessageHandler(filters=filters.TEXT, callback=settings.manage_users_and_permissions)
@@ -414,12 +421,17 @@ def main():
                 CallbackQueryHandler(pattern="^set_default_permissions$", callback=set_user_permissions)
             ],
 
-            ConversationState.REMOVE_USER: [
+            ConversationState.REMOVE_OR_EDIT_USER: [
                 MessageHandler(filters=filters.TEXT, callback=settings.manage_users_and_permissions)
             ],
             ConversationState.CONFIRM_REMOVE_USER: [
                 CallbackQueryHandler(pattern="^remove_allowed_user.+$", callback=settings.manage_users_and_permissions),
                 CallbackQueryHandler(pattern="^remove_allowed_user$", callback=settings.manage_users_and_permissions)
+            ],
+
+            ConversationState.CONFIRM_EDIT_USER: [
+                CallbackQueryHandler(pattern="^edit_allowed_user.+$", callback=manage_users_and_permissions),
+                CallbackQueryHandler(pattern="^edit_user_permissions$", callback=manage_users_and_permissions)
             ]
         },
         fallbacks=[

@@ -4,7 +4,9 @@ allowed_users:
     label: 'Demi'
     permissions:
       can_manage_backups: True
+      can_manage_users: False
   7233636327:
     label: 'Mia Madre'
     permissions:
       can_manage_backups: True
+      can_manage_users: False
