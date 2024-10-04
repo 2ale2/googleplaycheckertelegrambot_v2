@@ -147,6 +147,10 @@ async def parse_conversation_message(context: CallbackContext, data: dict):
 
 
 async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     if update.callback_query is not None:
         if len(li := update.callback_query.data.split(" ")) > 1:
             try:
@@ -199,7 +203,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
         {
             "user_type": "owner" / "admin" / "allowed"
             "permissions": {
-                "can_menage_backups": True / False
+                "can_manage_backups": True / False
             }
             "first_boot": True,
             "apps": {
@@ -286,7 +290,10 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
     if os.path.isdir(user_folder := ("backups/" + str(update.effective_user.id))):
         l = glob.glob(user_folder + "/*.yml")
         for el in l:
-            file_name = el.split("\\")[1]
+            try:
+                file_name = el.split("/")[-1]
+            except IndexError:
+                file_name = el.split("\\")[-1]
             cd["backups"][len(cd["backups"]) + 1] = {}
             cd["backups"][len(cd["backups"])]["file_name"] = file_name
             file_name = file_name.split(".yml")[0]
@@ -361,9 +368,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                     text += "➡ <b>Default Permissions</b>\n"
                     for permission in (p := first_boot['settings']['default_permissions']):
                         text += (f"    - <u>{' '.join(cp.capitalize() for cp in permission.split("_"))}</u>: "
-                                 f"<code>{p[permission]}</code>\n")
-
-                    text += "    - <u>Can Manage Users</u>: <code>False</code>\n\n"
+                                 f"<code>{p[permission]}</code>\n\n")
 
                     if len(first_boot['apps']):
                         text += "➡ <b>Apps</b>\n"

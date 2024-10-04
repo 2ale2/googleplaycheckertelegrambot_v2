@@ -168,4 +168,6 @@ class ConversationState(Enum):
     CONFIRM_REMOVE_USER = 31
     CONFIRM_EDIT_USER = 32
 
+    DELETE_USER_BACKUPS = 33
+
     TO_BE_ENDED = 100

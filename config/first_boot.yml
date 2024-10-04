@@ -4,6 +4,7 @@ settings:
   default_send_on_check: True
   default_permissions:
     can_manage_backups: True
+    can_manage_users: False
 
 apps:
   1:

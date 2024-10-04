@@ -158,6 +158,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @send_action(ChatAction.TYPING)
 async def tutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
     if update.callback_query.data.startswith("print_tutorial"):
         if context.chat_data["user_type"] == "admin" or context.chat_data["user_type"] == "owner":
             text = context.bot_data["settings"]["texts"]["overall_functioning"]["admin"]
@@ -233,7 +236,7 @@ def main():
     persistence = PicklePersistence(filepath="config/persistence")
     appl = (ApplicationBuilder().token(os.getenv("BOT_TOKEN")).persistence(persistence).
             defaults(Defaults(tzinfo=pytz.timezone('Europe/Rome'))).
-            post_init(set_bot_data).build())
+            post_init(set_bot_data).arbitrary_callback_data(True).build())
 
     conv_handler1 = ConversationHandler(
         entry_points=[
@@ -432,6 +435,10 @@ def main():
             ConversationState.CONFIRM_EDIT_USER: [
                 CallbackQueryHandler(pattern="^edit_allowed_user.+$", callback=manage_users_and_permissions),
                 CallbackQueryHandler(pattern="^edit_user_permissions$", callback=manage_users_and_permissions)
+            ],
+
+            ConversationState.DELETE_USER_BACKUPS: [
+                CallbackQueryHandler(pattern="^delete_backup_files.+$", callback=settings.manage_users_and_permissions)
             ]
         },
         fallbacks=[

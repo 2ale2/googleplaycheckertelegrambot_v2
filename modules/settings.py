@@ -1,4 +1,6 @@
 import os
+import re
+import shutil
 from logging import handlers
 from time import sleep
 
@@ -23,6 +25,10 @@ bot_logger = logging.getLogger("bot_logger")
 
 @send_action(ChatAction.TYPING)
 async def set_defaults(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     if update.callback_query and update.callback_query.data == "edit_default_settings":
         await delete_message(context=context, chat_id=update.effective_chat.id,
                              message_id=update.effective_message.message_id)
@@ -32,14 +38,14 @@ async def set_defaults(update: Update, context: CallbackContext):
                 f"<code>{inp['months']}m{inp['days']}d{inp['hours']}h{inp['minutes']}min{inp['seconds']}s</code>\n"
                 f"  🔹 <u>Default Send On Check</u> "
                 f"<code>{context.chat_data['settings']['default_send_on_check']}</code>\n")
+        if await is_owner_or_admin(context, update.effective_user.id):
+            text += "  🔹<u>Default Permissions</u>\n"
 
-        text += "  🔹<u>Default Permissions</u>\n"
+            for permissions in (p := context.chat_data["permissions"]):
+                text += (f"     🔸<i>{' '.join(w.capitalize() for w in permissions.split("_"))}</i> – "
+                         f"<code>{p[permissions]}</code>\n")
 
-        for permissions in (p := context.chat_data["permissions"]):
-            text += (f"     🔸<i>{' '.join(w.capitalize() for w in permissions.split("_"))}</i> – "
-                     f"<code>{p[permissions]}</code>\n")
-
-        text += "\n"
+        text += "\n 🔸 Confermi di voler cambiare queste impostazioni?"
 
         sleep(1)
 
@@ -231,8 +237,7 @@ async def set_defaults(update: Update, context: CallbackContext):
 
         bot_logger.info(f"Default Send On Check -> Setting Completed: "
                         f"{context.chat_data['settings']['default_send_on_check']}")
-        if (update.effective_user.id == context.bot_data["users"]["owner"]
-            or update.effective_user.id == context.bot_data["users"]["admin"]):
+        if await is_owner_or_admin(context, update.effective_user.id):
             text = "🔐 <b>Setting Default Permissions</b>\n\n"
 
             context.chat_data["temp"]["new_permissions"] = {}
@@ -348,12 +353,12 @@ async def set_defaults(update: Update, context: CallbackContext):
                 f"🔸 <u>Default Send On Check</u> – "
                 f"<code>{str(context.chat_data['settings']['default_send_on_check'])}"
                 f"</code>\n")
+        if await is_owner_or_admin(context, update.effective_user.id):
+            text += "🔸 <u>Default Permissions</u>\n"
 
-        text += "🔸 <u>Default Permissions</u>\n"
-
-        for permissions in (p := context.chat_data["permissions"]):
-            text += (f"     🔹<i>{' '.join(w.capitalize() for w in permissions.split("_"))}</i> – "
-                     f"<code>{p[permissions]}</code>\n")
+            for permissions in (p := context.chat_data["permissions"]):
+                text += (f"     🔹<i>{' '.join(w.capitalize() for w in permissions.split("_"))}</i> – "
+                         f"<code>{p[permissions]}</code>\n")
         
         text += "\n"
 
@@ -375,6 +380,10 @@ async def set_defaults(update: Update, context: CallbackContext):
 
 
 async def change_settings(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     text = ("⚙ <b>Settings Panel</b>\n\n🔹Da qui puoi cambiare le impostazioni di default e gestire le applicazioni "
             "monitorate.\n\n🔸 Scegli un'opzione.")
 
@@ -395,6 +404,10 @@ async def change_settings(update: Update, context: CallbackContext):
 
 
 async def menage_apps(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     if update.callback_query:
         if update.callback_query.data == "menage_apps" or update.callback_query.data.startswith("back_to_settings"):
 
@@ -498,33 +511,41 @@ async def menage_apps(update: Update, context: CallbackContext):
 
 
 async def backup_and_restore(update: Update, context: CallbackContext):
-    if not is_allowed_user_function(user_id=update.effective_chat.id,
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
+    if not await is_allowed_user_function(user_id=update.effective_chat.id,
                                     users=context.bot_data["users"],
                                     permission='can_manage_backups'):
         await send_not_allowed_function_message(update, context)
         return
 
     cd = context.chat_data
+    removed = False
     text = "💾 <b>Backup & Ripristino</b>\n\n"
     if update.callback_query and update.callback_query.data == "backup_restore":
-        if not await is_allowed_user_function(user_id=update.effective_user.id,
-                                              users=context.bot_data["users"],
-                                              permission="can_menage_backups"):
-            text += ("❌ Non sei abilitato all'uso di questa funzione\n\n"
-                     "🔸 Contatta @Linxay per richiedere di essere abilitato.")
-            keyboard = [
-                [
-                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="back_to_main_menu")
-                ]
-            ]
+        new_backups = await check_for_backups(update.effective_chat.id)
 
-            await send_message_with_typing_action(data={
-                "chat_id": update.effective_chat.id,
-                "text": text,
-                "keyboard": keyboard
-            }, context=context)
+        if len(new_backups) < len(cd["backups"]):
+            removed = True
 
-            return ConversationState.CHANGE_SETTINGS
+        cd["backups"] = new_backups
+
+        if len(cd["backups"]) == 0:
+            text += "ℹ️ Non hai nessun backup.\n\n"
+            if removed:
+                text += "⚠ Alcuni file di backup non sono più presenti. @Linxay potrebbe averli rimossi\n\n"
+            text += "🔸 Scegli un'opzione."
+        else:
+            text += f"ℹ️ Hai {len(cd['backups'])} file(s) di backup.\n\n🔍 <b>Informazioni</b>\n\n"
+            for backup in cd["backups"]:
+                b = cd["backups"][backup]
+                text += f"      {backup}. <code>{b["file_name"]}</code>\n"
+            if removed:
+                text += "\n⚠ Alcuni file di backup non sono più presenti. @Linxay potrebbe averli rimossi\n"
+            text += ("\n🔸 Per <b>visualizzare</b>, <b>ripristinare</b> o <b>cancellare</b> un backup, "
+                     "scrivi l'indice corrispondente. Altrimenti, scegli un'opzione.")
 
         keyboard = [
             [
@@ -535,15 +556,8 @@ async def backup_and_restore(update: Update, context: CallbackContext):
             ]
         ]
 
-        if len(cd["backups"]) == 0:
-            text += "ℹ️ Non hai nessun backup.\n\n🔸 Scegli un'opzione."
-        else:
-            text += f"ℹ️ Hai {len(cd['backups'])} file(s) di backup.\n\n🔍 <b>Informazioni</b>\n\n"
-            for backup in cd["backups"]:
-                b = cd["backups"][backup]
-                text += f"      {backup}. <code>{b["file_name"]}</code>\n"
-            text += ("\n🔸 Per <b>visualizzare</b>, <b>ripristinare</b> o <b>cancellare</b> un backup, "
-                     "scrivi l'indice corrispondente. Altrimenti, scegli un'opzione.")
+        if removed:
+            keyboard.insert(1, InlineKeyboardButton(text="🆘 Contatta @Linxay", url="https://t.me/Linxay"))
 
         message_id = await parse_conversation_message(context=context, data={
             "chat_id": update.effective_chat.id,
@@ -824,6 +838,10 @@ async def backup_and_restore(update: Update, context: CallbackContext):
 
 
 async def manage_users_and_permissions(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     if not await is_allowed_user_function(user_id=update.effective_chat.id,
                                           users=context.bot_data["users"],
                                           permission='can_manage_users'):
@@ -846,10 +864,11 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
                 InlineKeyboardButton(text="➖ Rimuove Utente", callback_data="remove_allowed_user")
             ],
             [
-                InlineKeyboardButton(text="✏️ Modifica Permessi Utente", callback_data="edit_user_permissions")
+                InlineKeyboardButton(text="✏️ Modifica Utente", callback_data="edit_user_permissions"),
+                InlineKeyboardButton(text="📜 Lista Utenti", callback_data="list_users_permissions")
             ],
             [
-                InlineKeyboardButton(text="📜 Lista Utenti e Permessi", callback_data="list_users_permissions")
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="settings")
             ]
         ]
         await send_message_with_typing_action(data={
@@ -959,7 +978,7 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
                                      message_id=cd["temp"]["message_to_delete"])
                 del cd["temp"]["message_to_delete"]
 
-            usr = bd["users"]["allowed"].get((uinp := int(update.effective_message.text)))
+            usr = bd["users"]["allowed"].get((uinp := int(re.sub(r'\D', '', update.effective_message.text))))
             if not usr:
                 text += "❌ Non ho trovato l'ID. Riscrivilo."
                 keyboard = [
@@ -1024,8 +1043,7 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
             for permission in (bdu := usr["permissions"]):
                 text += (f"  🔹 <i>{' '.join(w.capitalize() for w in permission.split('_'))}</i>: "
                          f"<code>{bdu[permission]}</code>\n")
-            text += (f"  🔹 <i>Can Manage Users</i>: <code>False</code>"
-                     f"\n\n🔸 Confermi di voler modificare i permessi di <code>{uinp}</code>?")
+            text += f"\n🔸 Confermi di voler modificare i permessi di <code>{uinp}</code>?"
             keyboard = [
                 [
                     InlineKeyboardButton(text="✏ Modifica", callback_data="edit_allowed_user " + str(uinp)),
@@ -1173,10 +1191,33 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
 
     if update.callback_query and (update.callback_query.data.startswith("remove_allowed_user")
                                   and not update.callback_query.data == "remove_allowed_user"):
-        del bd["users"]["allowed"][int(update.callback_query.data.split(" ")[1])]
+        user_id = int(update.callback_query.data.split(" ")[1])
+        del bd["users"]["allowed"][user_id]
 
-        text += ("✅ Utente rimosso correttamente. Non potrà più usare questo bot.\n\n"
-                 "🔸 Scegli un'opzione")
+        text += "✅ Utente rimosso correttamente. Non potrà più usare questo bot.\n\n"
+
+        backups = await check_for_backups(user_id)
+
+        if len(backups) > 0:
+            text += ("🔹 L'utente che hai rimosso aveva dei file di backup.\n\n"
+                     "🔸 Vuoi rimuovere tali file?")
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🚮 Rimuovi", callback_data=f"delete_backup_files {user_id}"),
+                    InlineKeyboardButton(text="🆗 Mantieni", callback_data="user_managing")
+                ]
+            ]
+
+            await send_message_with_typing_action(data={
+                "chat_id": update.effective_chat.id,
+                "text": text,
+                "keyboard": keyboard,
+                "message_id": update.effective_message.id
+            }, context=context)
+
+            return ConversationState.DELETE_USER_BACKUPS
+
+        text += "🔸 Scegli un'opzione"
         keyboard = [
             [
                 InlineKeyboardButton(text="➖ Rimuovi altro utente", callback_data="remove_allowed_user"),
@@ -1191,6 +1232,59 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
             "message_id": update.effective_message.id
         }, context=context)
 
+
+        return ConversationState.USERS_MANAGING_MENU
+
+    if update.callback_query and update.callback_query.data.startswith("delete_backup_files"):
+        try:
+            shutil.rmtree(f"backups/{update.callback_query.data.split(' ')[-1]}")
+            text += "✅ Backups rimossi con successo"
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="➖ Rimuovi altro utente", callback_data="remove_allowed_user"),
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_managing")
+                ]
+            ]
+        except FileNotFoundError:
+            text += "⚠ La cartella non è stata trovata"
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="➖ Rimuovi altro utente", callback_data="remove_allowed_user"),
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_managing")
+                ]
+            ]
+        except PermissionError:
+            text += "⚠ Non ho i permessi per rimuovere la cartella di file"
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🆘 Contatta @AleLntr", url="https://t.me/AleLntr")
+                ],
+                [
+                    InlineKeyboardButton(text="➖ Rimuovi altro utente", callback_data="remove_allowed_user"),
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_managing")
+                ]
+            ]
+        except OSError as e:
+            bot_logger.error(f"Errore durante il tentativo di rimozione di file dalla cartella backup: {e}")
+            text += "⚠ Non sono riuscito a cancellare i file. Controlla 'settings.log'."
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🆘 Contatta @AleLntr", url="https://t.me/AleLntr")
+                ],
+                [
+                    InlineKeyboardButton(text="➖ Rimuovi altro utente", callback_data="remove_allowed_user"),
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="user_managing")
+                ]
+            ]
+
+        text += "\n\n🔸 Scegli un'opzione"
+
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "message_id": update.effective_message.id
+        }, context=context)
 
         return ConversationState.USERS_MANAGING_MENU
 
@@ -1209,6 +1303,10 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
 
 
 async def list_users_permissions(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     users = context.bot_data["users"]
 
     text = ("📜 <b>Utenti e Permessi</b>\n\n"
@@ -1220,8 +1318,7 @@ async def list_users_permissions(update: Update, context: CallbackContext):
             text += f"🔸 🏷 <i>{users["allowed"][user]['label']}</i> – <code>{user}</code>\n"
             for permission in users["allowed"][user]["permissions"]:
                 text += (f"     🔹<b>{' '.join(w.capitalize() for w in permission.split('_'))}</b>: "
-                         f"<code>{users["allowed"][user]["permissions"][permission]}</code>\n"
-                         f"     🔹<b>Can Manage Users</b>: <code>False</code>")
+                         f"<code>{users["allowed"][user]["permissions"][permission]}</code>\n")
             text += "\n\n"
 
         text += "ℹ <i>Proprietario</i> e <i>Padrone</i> hanno sempre tutti i permessi."
@@ -1250,8 +1347,11 @@ async def list_users_permissions(update: Update, context: CallbackContext):
     return ConversationState.USERS_MANAGING_MENU
 
 
-
 async def set_user_permissions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     cd = context.chat_data
     bd = context.bot_data
     data = update.callback_query.data
@@ -1316,6 +1416,10 @@ async def close_menu(update: Update, context: CallbackContext):
 
 
 async def list_apps(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     text = "🗃 <b>App List</b>\n\n"
 
     if len(context.chat_data["apps"]) == 0:
@@ -1365,6 +1469,10 @@ async def list_apps(update: Update, context: CallbackContext):
 
 
 async def list_last_checks(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     await delete_message(context=context, chat_id=update.effective_chat.id, message_id=update.effective_message.id)
     text = "📜 <b>Last Checks</b>\n\n"
     keyboard = [
@@ -1400,6 +1508,10 @@ async def list_last_checks(update: Update, context: CallbackContext):
 
 
 async def add_app(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     if update.callback_query and update.callback_query.data == "add_app":
         text = "➕ <b>Add App</b>\n\n"
 
@@ -1624,6 +1736,10 @@ async def add_app(update: Update, context: CallbackContext):
 
 
 async def set_app(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     cd = context.chat_data
     if update.callback_query and update.callback_query.data == "confirm_app_to_edit":
         if "edit_message" in cd:
@@ -1842,11 +1958,11 @@ async def set_app(update: Update, context: CallbackContext):
     if update.callback_query and update.callback_query.data.startswith("send_on_check"):
         if adding:
             cd["apps"][len(cd["apps"]) + 1] = {
-                "title": cd["setting_app"]["app_name"],
-                "url": cd["setting_app"]["url"],
+                "app_name": cd["setting_app"]["app_name"],
+                "app_link": cd["setting_app"]["url"],
                 "current_version": cd["setting_app"]["current_version"],
                 "last_update": cd["setting_app"]["last_update"],
-                "appId": cd["setting_app"]["appId"],
+                "app_id": cd["setting_app"]["appId"],
                 "last_check": None,
                 "suspended": False
             }
@@ -1878,6 +1994,10 @@ async def set_app(update: Update, context: CallbackContext):
 
 
 async def edit_app(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     cd = context.chat_data
     if update.callback_query and update.callback_query.data == "edit_app":
         if "edit_message" in cd:
@@ -2035,6 +2155,10 @@ async def edit_app(update: Update, context: CallbackContext):
 
 
 async def remove_app(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     cd = context.chat_data
     if update.callback_query and update.callback_query.data == "delete_app":
         if "delete_app_message" in cd:
@@ -2211,6 +2335,10 @@ async def remove_app(update: Update, context: CallbackContext):
 
 
 async def suspend_app(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     cd = context.chat_data
     if update.callback_query:
         if (update.callback_query.data.startswith("suspend_app") or
@@ -2309,6 +2437,10 @@ async def suspend_app(update: Update, context: CallbackContext):
 
 
 async def see_app_settings(update: Update, context: CallbackContext):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     cd = context.chat_data
     if (index := int(update.callback_query.data.split(" ")[1])) in cd["apps"]:
         ap = cd["apps"][index]
@@ -2380,6 +2512,10 @@ async def input_name_fixer(string: str):
 
 
 async def send_menage_apps_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ You are not allowed to use this bot.")
+        return
+
     cd = context.chat_data
     text = ("🗂 <b>Gestione Applicazioni</b>\n\n"
             "🔹Da questo menù, puoi visualizzare e gestire le applicazioni.")
@@ -2429,6 +2565,24 @@ async def send_menage_apps_menu(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     return ConversationState.MANAGE_APPS
+
+
+async def is_owner_or_admin(context: ContextTypes.DEFAULT_TYPE, user_id: str | int) -> bool:
+    return int(user_id) == context.bot_data["users"]["owner"] or int(user_id) == context.bot_data["users"]["admin"]
+
+
+async def check_for_backups(user_id: int | str) -> dict:
+    file_list = [f for f in os.listdir(f'backups/{user_id}') if os.path.isfile(f'backups/{user_id}/{f}')]
+    
+    file_dict = {}
+    
+    for counter, el in enumerate(file_list, start=1):
+        file_dict[int(counter)] = {
+            "file_name": el,
+            "backup_time": datetime.strptime(el, "%d_%m_%Y_%H_%M_%S.yml")
+        }
+
+    return file_dict
 
 
 def create_edit_app_list(chat_data: dict) -> list:
