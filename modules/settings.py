@@ -7,6 +7,7 @@ from time import sleep
 import pytz
 import requests
 from telegram import MessageEntity
+from telegram.constants import InlineKeyboardButtonLimit
 
 from decorators import send_action
 from utils import *
@@ -556,6 +557,12 @@ async def backup_and_restore(update: Update, context: CallbackContext):
             ]
         ]
 
+        if await is_owner_or_admin(context, update.effective_chat.id):
+            keyboard.insert(1, [InlineKeyboardButton(
+                text=f"🔢 Cambia Backup Massimi ({context.bot_data['settings']['max_backups']})",
+                callback_data="change_max_backups")
+            ])
+
         if removed:
             keyboard.insert(1, InlineKeyboardButton(text="🆘 Contatta @Linxay", url="https://t.me/Linxay"))
 
@@ -571,6 +578,25 @@ async def backup_and_restore(update: Update, context: CallbackContext):
         return ConversationState.BACKUP_MENU
 
     if update.message:
+        if "max_backups" in cd["temp"]:
+            if not (new := update.effective_message.text).isnumeric() or int(new) <= 0:
+                text += "❌ Specifica un numero positivo"
+                keyboard = [
+                    [
+                        InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+                    ]
+                ]
+                await send_message_with_typing_action(data={
+                    "chat_id": update.effective_chat.id,
+                    "text": text,
+                    "keyboard": keyboard,
+                    "message_id": update.effective_message.id
+                }, context=context)
+                return ConversationState.EDIT_MAX_BACKUPS
+            context.bot_data["settings"]["max_backups"] = int(new)
+
+            text += "✅ Numero backups modificato correttamente\n\n"
+
         inp = int(''.join(filter(set('0123456789').__contains__, update.message.text)))
         if inp > (max_index := len(cd["backups"])):
             text = f"❌ Fornisci un indice valido, compreso tra 1 e {max_index}"
@@ -639,6 +665,20 @@ async def backup_and_restore(update: Update, context: CallbackContext):
     if update.callback_query and update.callback_query.data == "create_backup":
         if not os.path.isdir(user_folder := ("backups/" + str(update.effective_user.id))):
             os.makedirs(user_folder)
+        if len(cd["backups"]) >= context.bot_data["settings"]["max_backups"]:
+            text += "⚠ Hai raggiunto il numero massimo di file di backup. Prima rimuovine uno."
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+                ]
+            ]
+            await send_message_with_typing_action(data={
+                "chat_id": update.effective_chat.id,
+                "text": text,
+                "keyboard": keyboard,
+                "message_id": update.effective_message.id
+            }, context=context)
+            return
         filename = datetime.now(pytz.timezone("Europe/Rome")).strftime("%d_%m_%Y_%H_%M_%S") + ".yml"
         cd["backups"][len(cd["backups"]) + 1] = {}
         cd["backups"][len(cd["backups"])]["file_name"] = filename
@@ -836,6 +876,24 @@ async def backup_and_restore(update: Update, context: CallbackContext):
 
         return
 
+    if update.callback_query and update.callback_query.data == "change_max_backups":
+        text += "🔸 Specifica il nuovo numero"
+        keyboard = [
+            [
+                InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+            ]
+        ]
+        cd["temp"]["max_backups"] = True
+
+        await send_message_with_typing_action(data={
+            "chat_id": update.effective_chat.id,
+            "text": text,
+            "keyboard": keyboard,
+            "message_id": update.effective_message.id
+        }, context=context)
+
+        return ConversationState.EDIT_MAX_BACKUPS
+
 
 async def manage_users_and_permissions(update: Update, context: CallbackContext):
     if not await is_allowed_user(user_id=update.effective_chat.id, users=context.bot_data["users"]):
@@ -1021,7 +1079,7 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
                                      message_id=cd["temp"]["message_to_delete"])
                 del cd["temp"]["message_to_delete"]
 
-            usr = bd["users"]["allowed"].get((uinp := int(update.effective_message.text)))
+            usr = bd["users"]["allowed"].get((uinp := int(re.sub(r'\D', '', update.effective_message.text))))
             if not usr:
                 text += "❌ Non ho trovato l'ID. Riscrivilo."
                 keyboard = [
@@ -1199,7 +1257,7 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
         backups = await check_for_backups(user_id)
 
         if len(backups) > 0:
-            text += ("🔹 L'utente che hai rimosso aveva dei file di backup.\n\n"
+            text += (f"🔹 L'utente che hai rimosso aveva {len(backups)} file di backup.\n\n"
                      "🔸 Vuoi rimuovere tali file?")
             keyboard = [
                 [
@@ -2572,10 +2630,12 @@ async def is_owner_or_admin(context: ContextTypes.DEFAULT_TYPE, user_id: str | i
 
 
 async def check_for_backups(user_id: int | str) -> dict:
-    file_list = [f for f in os.listdir(f'backups/{user_id}') if os.path.isfile(f'backups/{user_id}/{f}')]
-    
     file_dict = {}
-    
+    try:
+        file_list = [f for f in os.listdir(f'backups/{user_id}') if os.path.isfile(f'backups/{user_id}/{f}')]
+    except FileNotFoundError:
+        file_list = []
+
     for counter, el in enumerate(file_list, start=1):
         file_dict[int(counter)] = {
             "file_name": el,
@@ -2583,6 +2643,14 @@ async def check_for_backups(user_id: int | str) -> dict:
         }
 
     return file_dict
+
+
+async def check_number_backups_for_users(context: ContextTypes.DEFAULT_TYPE) -> list:
+    max_b = context.bot_data["settings"]["max_backups"]
+
+    for root, dirs, files in os.walk('backups/'):
+        backups = [os.path.join(root, f) for f in files if f.endswith(".yml")]
+
 
 
 def create_edit_app_list(chat_data: dict) -> list:

@@ -118,6 +118,21 @@ class ValidatePermission(ValidateResult):
         return ValidateResult(field, code, message)
 
 
+class ValidateMaxBackups(ValidateResult):
+    SUCCESS = 0
+    INVALID_TYPE = -5
+
+    @staticmethod
+    def get_outcome(code, field='max_backups'):
+        # noinspection PyShadowingNames
+        messages = {
+            ValidateSendOnCheckOutcome.SUCCESS: f"Valore '{field}' valido",
+            ValidateSendOnCheckOutcome.INVALID_TYPE: f"'{field}' deve essere un intero positivo"
+        }
+        message = messages.get(code, 'Errore Sconosciuto')
+        return ValidateResult(field, code, message)
+
+
 class ConversationState(Enum):
     # MainMenu
     CHANGE_SETTINGS = 0
@@ -154,20 +169,21 @@ class ConversationState(Enum):
     BACKUP_SELECTED = 21
     BACKUP_DELETE = 22
     BACKUP_RESTORE = 23
+    EDIT_MAX_BACKUPS = 24
 
     # User Managing
-    USERS_MANAGING_MENU = 24
-    ADD_USER = 25
-    CONFIRM_USER = 26
-    ADD_USER_LABEL = 27
-    CONFIRM_LABEL = 28
+    USERS_MANAGING_MENU = 25
+    ADD_USER = 26
+    CONFIRM_USER = 27
+    ADD_USER_LABEL = 28
+    CONFIRM_LABEL = 29
 
-    SET_PERMISSION = 29
+    SET_PERMISSION = 30
 
-    REMOVE_OR_EDIT_USER = 30
-    CONFIRM_REMOVE_USER = 31
-    CONFIRM_EDIT_USER = 32
+    REMOVE_OR_EDIT_USER = 31
+    CONFIRM_REMOVE_USER = 32
+    CONFIRM_EDIT_USER = 33
 
-    DELETE_USER_BACKUPS = 33
+    DELETE_USER_BACKUPS = 34
 
     TO_BE_ENDED = 100

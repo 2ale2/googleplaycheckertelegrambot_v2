@@ -307,7 +307,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
     if "removing" in cd:
         del cd["removing"]
 
-    if os.path.isfile("config/first_boot.yml") and user_id == bd["users"]["owner"]:
+    if os.path.isfile("config/first_boot.yml") and (user_id == bd["users"]["owner"] or user_id == bd["users"]["admin"]):
         with (open("config/first_boot.yml", 'r') as f):
             try:
                 first_boot = yaml.safe_load(f)
@@ -369,6 +369,8 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
                     for permission in (p := first_boot['settings']['default_permissions']):
                         text += (f"    - <u>{' '.join(cp.capitalize() for cp in permission.split("_"))}</u>: "
                                  f"<code>{p[permission]}</code>\n\n")
+
+                    text += f"➡ <b>Backup Massimi</b>: {first_boot['settings']['max_backups']}\n\n"
 
                     if len(first_boot['apps']):
                         text += "➡ <b>Apps</b>\n"
@@ -518,6 +520,11 @@ async def check_first_boot_configuration(conf: dict):
             bot_logger.warning(f"First Boot Configuration – Syntax Error for app #{app_index}: {aco}. Check the file.")
             return aco
 
+    if not isinstance(conf['settings']['max_backups'], int):
+        mbco = ValidateMaxBackups.get_outcome(ValidateMaxBackups.INVALID_TYPE)
+        bot_logger.warning(f"First Boot Configuration – Syntax Error: {mbco}. Check the file.")
+        return mbco
+
     return ValidateResult('Success', 1, 'Configuration is valid.')
 
 
@@ -609,6 +616,8 @@ async def load_first_boot_configuration(update: Update, context: CallbackContext
                     seconds=values[4])
             }
             await schedule_app_check(cd, False, update, context)
+
+    context.bot_data["settings"]["max_backups"] = int(dp["max_backups"])
 
     cd["first_boot"] = False
 

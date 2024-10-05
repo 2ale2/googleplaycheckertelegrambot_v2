@@ -108,7 +108,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     if not await is_allowed_user(user_id=user_id, users=context.bot_data["users"]):
-        await context.bot.send_message(chat_id=chat_id, text="❌ You are not allowed to use this bot.")
+        await context.bot.send_message(chat_id=chat_id, text="❌ Non sei abilitato all'uso di questo bot.")
         return
 
     if update.callback_query is not None:
@@ -367,6 +367,7 @@ def main():
         states={
             ConversationState.BACKUP_MENU: [
                 CallbackQueryHandler(pattern="^create_backup$", callback=settings.backup_and_restore),
+                CallbackQueryHandler(pattern="^change_max_backups$", callback=settings.backup_and_restore),
                 MessageHandler(filters=filters.TEXT, callback=settings.backup_and_restore)
             ],
             ConversationState.BACKUP_COMPLETED: [
@@ -382,6 +383,9 @@ def main():
             ],
             ConversationState.BACKUP_RESTORE: [
                 CallbackQueryHandler(pattern="^confirm_restore_backup.+$", callback=settings.backup_and_restore)
+            ],
+            ConversationState.EDIT_MAX_BACKUPS: [
+                MessageHandler(filters=filters.TEXT, callback=settings.backup_and_restore)
             ]
         },
         fallbacks=[
