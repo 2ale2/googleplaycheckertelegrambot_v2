@@ -1,5 +1,4 @@
 import os
-import re
 import shutil
 from logging import handlers
 from time import sleep
@@ -7,11 +6,10 @@ from time import sleep
 import pytz
 import requests
 from telegram import MessageEntity
-from telegram.constants import InlineKeyboardButtonLimit
 
 from decorators import send_action
-from utils import *
 from job_queue import reschedule
+from utils import *
 
 settings_logger = logging.getLogger("settings_logger")
 settings_logger.setLevel(logging.INFO)
@@ -76,10 +74,10 @@ async def set_defaults(update: Update, context: CallbackContext):
 
         bot_logger.info(f"User {update.effective_user.id} – Starting to set default settings.")
 
-        if "message_to_delete" in context.chat_data:
+        if "message_to_delete" in context.chat_data["temp"]:
             await delete_message(context=context, chat_id=update.effective_chat.id,
-                                 message_id=context.chat_data["message_to_delete"])
-            del context.chat_data["message_to_delete"]
+                                 message_id=context.chat_data["temp"]["message_to_delete"])
+            del context.chat_data["temp"]["message_to_delete"]
 
         if len(li := update.callback_query.data.split(" ")) > 1:
             await delete_message(context=context, message_id=int(li[1]), chat_id=update.effective_chat.id)
@@ -108,10 +106,10 @@ async def set_defaults(update: Update, context: CallbackContext):
         return 2
 
     if not update.callback_query and update.message:
-        if "message_to_delete" in context.chat_data:
+        if "message_to_delete" in context.chat_data["temp"]:
             await delete_message(context=context, chat_id=update.effective_chat.id,
-                                 message_id=context.chat_data["message_to_delete"])
-            del context.chat_data["message_to_delete"]
+                                 message_id=context.chat_data["temp"]["message_to_delete"])
+            del context.chat_data["temp"]["message_to_delete"]
         try:
             # noinspection DuplicatedCode
             months = int(update.message.text.split('m')[0])
@@ -254,7 +252,7 @@ async def set_defaults(update: Update, context: CallbackContext):
                     text += (f"🔹 <b>{' '.join(w.capitalize() for w in permission.split("_"))}</b> "
                              f"– {context.bot_data['settings']['permissions'][permission]['permission_set_text']}")
                 if not context.chat_data["first_boot"]:
-                    text += f"\n\n⚠ Se torni indietro adesso, i permessi di default non verranno cambiati."
+                    text += f"\n\n⚠️ Se torni indietro adesso, i permessi di default non verranno cambiati."
 
                 keyboard = [
                     [
@@ -418,16 +416,16 @@ async def menage_apps(update: Update, context: CallbackContext):
                                      chat_id=update.effective_chat.id)
                 del context.chat_data["format_message"]
 
-            if "message_to_delete" in context.chat_data:
+            if "message_to_delete" in context.chat_data["temp"]:
                 await schedule_messages_to_delete(context=context,
                                                   messages={
-                                                      int(context.chat_data["message_to_delete"]): {
+                                                      int(context.chat_data["temp"]["message_to_delete"]): {
                                                           "chat_id": update.effective_chat.id,
                                                           "time": 2
                                                       }
                                                   })
 
-                del context.chat_data["message_to_delete"]
+                del context.chat_data["temp"]["message_to_delete"]
 
             text = ("🗂 <b>Gestione Applicazioni</b>\n\n"
                     "🔹Da questo menù, puoi visualizzare e gestire le applicazioni.")
@@ -536,7 +534,7 @@ async def backup_and_restore(update: Update, context: CallbackContext):
         if len(cd["backups"]) == 0:
             text += "ℹ️ Non hai nessun backup.\n\n"
             if removed:
-                text += "⚠ Alcuni file di backup non sono più presenti. @Linxay potrebbe averli rimossi\n\n"
+                text += "⚠️ Alcuni file di backup non sono più presenti. @Linxay potrebbe averli rimossi\n\n"
             text += "🔸 Scegli un'opzione."
         else:
             text += f"ℹ️ Hai {len(cd['backups'])} file(s) di backup.\n\n🔍 <b>Informazioni</b>\n\n"
@@ -544,7 +542,7 @@ async def backup_and_restore(update: Update, context: CallbackContext):
                 b = cd["backups"][backup]
                 text += f"      {backup}. <code>{b["file_name"]}</code>\n"
             if removed:
-                text += "\n⚠ Alcuni file di backup non sono più presenti. @Linxay potrebbe averli rimossi\n"
+                text += "\n⚠️ Alcuni file di backup non sono più presenti. @Linxay potrebbe averli rimossi\n"
             text += ("\n🔸 Per <b>visualizzare</b>, <b>ripristinare</b> o <b>cancellare</b> un backup, "
                      "scrivi l'indice corrispondente. Altrimenti, scegli un'opzione.")
 
@@ -564,21 +562,31 @@ async def backup_and_restore(update: Update, context: CallbackContext):
             ])
 
         if removed:
-            keyboard.insert(1, InlineKeyboardButton(text="🆘 Contatta @Linxay", url="https://t.me/Linxay"))
+            keyboard.insert(1, [InlineKeyboardButton(text="🆘 Contatta @Linxay", url="https://t.me/Linxay")])
 
-        message_id = await parse_conversation_message(context=context, data={
+        await parse_conversation_message(context=context, data={
             "chat_id": update.effective_chat.id,
             "text": text,
             "reply_markup": InlineKeyboardMarkup(keyboard),
             "message_id": update.effective_message.id
         })
 
-        cd["message_to_delete"] = message_id
-
         return ConversationState.BACKUP_MENU
 
     if update.message:
         if "max_backups" in cd["temp"]:
+            await schedule_messages_to_delete(messages={
+                int(cd["temp"]["message_to_delete"]): {
+                    "chat_id": update.effective_chat.id,
+                    "time": 1
+                },
+                update.effective_message.id: {
+                    "chat_id": update.effective_chat.id,
+                    "time": 1
+                }
+            }, context=context)
+            del cd["temp"]["message_to_delete"]
+
             if not (new := update.effective_message.text).isnumeric() or int(new) <= 0:
                 text += "❌ Specifica un numero positivo"
                 keyboard = [
@@ -586,16 +594,35 @@ async def backup_and_restore(update: Update, context: CallbackContext):
                         InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
                     ]
                 ]
-                await send_message_with_typing_action(data={
+                cd["temp"]["message_to_delete"] = await parse_conversation_message(data={
                     "chat_id": update.effective_chat.id,
                     "text": text,
-                    "keyboard": keyboard,
+                    "reply_markup": InlineKeyboardMarkup(keyboard),
                     "message_id": update.effective_message.id
                 }, context=context)
                 return ConversationState.EDIT_MAX_BACKUPS
-            context.bot_data["settings"]["max_backups"] = int(new)
 
-            text += "✅ Numero backups modificato correttamente\n\n"
+            text += "✅ <i>Numero backups modificato correttamente</i>"
+            
+            if context.bot_data["settings"]["max_backups"] > int(new):
+                text += (f"\n\nℹ Sono stati rimossi {await clean_backups(int(new))} file in eccesso\n\n"
+                         f"🔎 Leggi <code>settings.log</code> per eventuali errori")
+
+            context.bot_data["settings"]["max_backups"] = int(new)
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
+                ]
+            ]
+            await send_message_with_typing_action(data={
+                "chat_id": update.effective_chat.id,
+                "text": text,
+                "keyboard": keyboard,
+                "message_id": update.effective_message.id
+            }, context=context)
+            del cd["temp"]["max_backups"]
+            return ConversationHandler.END
 
         inp = int(''.join(filter(set('0123456789').__contains__, update.message.text)))
         if inp > (max_index := len(cd["backups"])):
@@ -613,9 +640,11 @@ async def backup_and_restore(update: Update, context: CallbackContext):
             })
             return ConversationState.BACKUP_MENU
 
-        if "message_to_delete" in cd:
-            await delete_message(context=context, chat_id=update.effective_chat.id, message_id=cd["message_to_delete"])
-            del cd["message_to_delete"]
+        if "message_to_delete" in cd["temp"]:
+            await delete_message(context=context,
+                                 chat_id=update.effective_chat.id,
+                                 message_id=cd["temp"]["message_to_delete"])
+            del cd["temp"]["message_to_delete"]
 
         fl = cd["backups"][inp]
         path = "backups/" + str(update.effective_chat.id) + "/" + fl["file_name"]
@@ -665,8 +694,9 @@ async def backup_and_restore(update: Update, context: CallbackContext):
     if update.callback_query and update.callback_query.data == "create_backup":
         if not os.path.isdir(user_folder := ("backups/" + str(update.effective_user.id))):
             os.makedirs(user_folder)
-        if len(cd["backups"]) >= context.bot_data["settings"]["max_backups"]:
-            text += "⚠ Hai raggiunto il numero massimo di file di backup. Prima rimuovine uno."
+        if (not await is_owner_or_admin(context, update.effective_chat.id)
+                and len(cd["backups"]) >= context.bot_data["settings"]["max_backups"]):
+            text += "⚠️ Hai raggiunto il numero massimo di file di backup. Prima rimuovine uno."
             keyboard = [
                 [
                     InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
@@ -877,20 +907,23 @@ async def backup_and_restore(update: Update, context: CallbackContext):
         return
 
     if update.callback_query and update.callback_query.data == "change_max_backups":
-        text += "🔸 Specifica il nuovo numero"
+        text += "🔸 Specifica il nuovo numero\n\n⚠️ I file in eccesso per ogni utente andranno rimossi"
         keyboard = [
             [
                 InlineKeyboardButton(text="🔙 Torna Indietro", callback_data="backup_restore")
             ]
         ]
+
         cd["temp"]["max_backups"] = True
 
-        await send_message_with_typing_action(data={
+        message_id = await parse_conversation_message(data={
             "chat_id": update.effective_chat.id,
             "text": text,
-            "keyboard": keyboard,
+            "reply_markup": InlineKeyboardMarkup(keyboard),
             "message_id": update.effective_message.id
         }, context=context)
+
+        cd["temp"]["message_to_delete"] = message_id
 
         return ConversationState.EDIT_MAX_BACKUPS
 
@@ -1051,7 +1084,7 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
                     "message_id": update.effective_message.id
                 }, context=context)
 
-                cd["message_to_delete"] = message_id
+                cd["temp"]["message_to_delete"] = message_id
                 return ConversationState.REMOVE_OR_EDIT_USER
 
             text += f"🔸 Confermi di voler rimuovere <code>{uinp}</code> (🏷 <i>{usr['label']}</i>)?"
@@ -1094,7 +1127,7 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
                     "message_id": update.effective_message.id
                 }, context=context)
 
-                cd["message_to_delete"] = message_id
+                cd["temp"]["message_to_delete"] = message_id
                 return ConversationState.REMOVE_OR_EDIT_USER
 
             text += f"🔐 <b>Permessi di 🏷 {usr['label']}</b>\n"
@@ -1304,7 +1337,7 @@ async def manage_users_and_permissions(update: Update, context: CallbackContext)
                 ]
             ]
         except FileNotFoundError:
-            text += "⚠ La cartella non è stata trovata"
+            text += "⚠️ La cartella non è stata trovata"
             keyboard = [
                 [
                     InlineKeyboardButton(text="➖ Rimuovi altro utente", callback_data="remove_allowed_user"),
@@ -1597,10 +1630,10 @@ async def add_app(update: Update, context: CallbackContext):
         await context.bot.send_chat_action(chat_id=update.effective_chat.id,
                                            action=ChatAction.TYPING)
         if len(entities := not_cquery_message.entities) == 1 and entities[0].type == MessageEntity.URL:
-            if "message_to_delete" in context.chat_data:
+            if "message_to_delete" in context.chat_data["temp"]:
                 await delete_message(context=context, chat_id=update.effective_chat.id,
-                                     message_id=context.chat_data["message_to_delete"])
-                del context.chat_data["message_to_delete"]
+                                     message_id=context.chat_data["temp"]["message_to_delete"])
+                del context.chat_data["temp"]["message_to_delete"]
 
             link = update.message.text[entities[0].offset:]
             res = requests.get(link)
@@ -1658,7 +1691,7 @@ async def add_app(update: Update, context: CallbackContext):
                                                                   "reply_markup": None
                                                               })
 
-                context.chat_data["message_to_delete"] = message_id
+                context.chat_data["temp"]["message_to_delete"] = message_id
 
                 await schedule_messages_to_delete(context=context,
                                                   messages={
@@ -1713,7 +1746,7 @@ async def add_app(update: Update, context: CallbackContext):
                                                                       keyboard) if keyboard else None
                                                               })
 
-                context.chat_data["message_to_delete"] = message_id
+                context.chat_data["temp"]["message_to_delete"] = message_id
 
                 await schedule_messages_to_delete(context=context,
                                                   messages={
@@ -1761,8 +1794,8 @@ async def add_app(update: Update, context: CallbackContext):
             return ConversationState.SEND_LINK
 
     if update.callback_query and update.callback_query.data == "app_name_from_link_not_correct":
-        if "message_to_delete" in context.chat_data:
-            del context.chat_data["message_to_delete"]
+        if "message_to_delete" in context.chat_data["temp"]:
+            del context.chat_data["temp"]["message_to_delete"]
 
         if "send_link_message" in context.chat_data:
             await delete_message(context=context,
@@ -1856,7 +1889,7 @@ async def set_app(update: Update, context: CallbackContext):
                 "<b>Esempio</b> 🔎 – <code>0m2d0h15min0s</code>\n\n"
                 "🔸 Fornisci l'intervallo che desideri.")
 
-        cd["message_to_delete"] = update.effective_message.id
+        cd["temp"]["message_to_delete"] = update.effective_message.id
 
         keyboard = [
             [InlineKeyboardButton(text="⚡️ Use Defaults", callback_data="set_default_values")]
@@ -1874,7 +1907,7 @@ async def set_app(update: Update, context: CallbackContext):
                                                           "reply_markup": InlineKeyboardMarkup(keyboard)
                                                       })
         if message_id != update.effective_message.id:
-            cd["message_to_delete"] = message_id
+            cd["temp"]["message_to_delete"] = message_id
 
         return ConversationState.SET_INTERVAL
 
@@ -1929,19 +1962,19 @@ async def set_app(update: Update, context: CallbackContext):
 
             return ConversationState.SET_INTERVAL
         else:
-            if "message_to_delete" in cd:
+            if "message_to_delete" in cd["temp"]:
                 await schedule_messages_to_delete(context=context,
                                                   messages={
                                                       int(update.effective_message.id): {
                                                           "time": 2.5,
                                                           "chat_id": update.effective_chat.id
                                                       },
-                                                      int(cd["message_to_delete"]): {
+                                                      int(cd["temp"]["message_to_delete"]): {
                                                           "time": 2,
                                                           "chat_id": update.effective_chat.id
                                                       }
                                                   })
-                del cd["message_to_delete"]
+                del cd["temp"]["message_to_delete"]
 
             cd["setting_app"]["check_interval"] = {
                 "input": {
@@ -1981,10 +2014,10 @@ async def set_app(update: Update, context: CallbackContext):
                                                         message_id=message.id,
                                                         reply_markup=InlineKeyboardMarkup(keyboard))
 
-            if "message_to_delete" in cd:
+            if "message_to_delete" in cd["temp"]:
                 await delete_message(context=context, chat_id=update.effective_chat.id,
-                                     message_id=context.chat_data["message_to_delete"])
-                del context.chat_data["message_to_delete"]
+                                     message_id=context.chat_data["temp"]["message_to_delete"])
+                del context.chat_data["temp"]["message_to_delete"]
 
             return ConversationState.CONFIRM_INTERVAL
 
@@ -2111,16 +2144,16 @@ async def edit_app(update: Update, context: CallbackContext):
         return ConversationState.EDIT_SELECT_APP
 
     if not update.callback_query and update.effective_message:
-        if "message_to_delete" in cd:
+        if "message_to_delete" in cd["temp"]:
             await schedule_messages_to_delete(context=context,
                                               messages={
-                                                  int(cd["message_to_delete"]): {
+                                                  int(cd["temp"]["message_to_delete"]): {
                                                       "chat_id": update.effective_chat.id,
                                                       "time": 2
                                                   }
                                               })
 
-            del cd["message_to_delete"]
+            del cd["temp"]["message_to_delete"]
 
         app_names = create_edit_app_list(cd)
         message = update.effective_message
@@ -2267,10 +2300,10 @@ async def remove_app(update: Update, context: CallbackContext):
         return ConversationState.DELETE_APP_SELECT
 
     if not update.callback_query:
-        if "message_to_delete" in cd:
+        if "message_to_delete" in cd["temp"]:
             await delete_message(context=context, chat_id=update.effective_chat.id,
-                                 message_id=cd["message_to_delete"])
-            del cd["message_to_delete"]
+                                 message_id=cd["temp"]["message_to_delete"])
+            del cd["temp"]["message_to_delete"]
 
         if (not update.message.text.strip().isnumeric() and
             (index := await get_app_from_string(update.message.text.strip().lower(), context))) or (
@@ -2305,7 +2338,7 @@ async def remove_app(update: Update, context: CallbackContext):
                                                      text=text,
                                                      reply_markup=InlineKeyboardMarkup(keyboard),
                                                      parse_mode='HTML')
-            cd["message_to_delete"] = message.id
+            cd["temp"]["message_to_delete"] = message.id
 
             return ConversationState.DELETE_APP_CONFIRM
 
@@ -2323,7 +2356,7 @@ async def remove_app(update: Update, context: CallbackContext):
                                                                   "reply_markup": None
                                                               })
 
-                cd["message_to_delete"] = message_id
+                cd["temp"]["message_to_delete"] = message_id
 
                 return ConversationState.DELETE_APP_SELECT
 
@@ -2339,7 +2372,7 @@ async def remove_app(update: Update, context: CallbackContext):
                                                                   "reply_markup": None
                                                               })
 
-                cd["message_to_delete"] = message_id
+                cd["temp"]["message_to_delete"] = message_id
 
                 return ConversationState.DELETE_APP_SELECT
 
@@ -2348,10 +2381,10 @@ async def remove_app(update: Update, context: CallbackContext):
             await delete_message(context=context, chat_id=update.effective_chat.id,
                                  message_id=cd["delete_app_message"])
             del cd["delete_app_message"]
-        if "message_to_delete" in cd:
+        if "message_to_delete" in cd["temp"]:
             await delete_message(context=context, chat_id=update.effective_chat.id,
-                                 message_id=cd["message_to_delete"])
-            del cd["message_to_delete"]
+                                 message_id=cd["temp"]["message_to_delete"])
+            del cd["temp"]["message_to_delete"]
 
         app_name = cd["apps"][cd["app_index_to_delete"]]['app_name']
         app_id = cd["apps"][cd["app_index_to_delete"]]["app_id"]
@@ -2645,12 +2678,23 @@ async def check_for_backups(user_id: int | str) -> dict:
     return file_dict
 
 
-async def check_number_backups_for_users(context: ContextTypes.DEFAULT_TYPE) -> list:
-    max_b = context.bot_data["settings"]["max_backups"]
+async def clean_backups(limit: int):
+    removed = 0
+    for i in os.walk('backups/'):
+        if i[0].endswith('backups/'):
+            continue
+        if len(i[2]) > limit:
+            sorted_files = sorted(i[2], key=lambda x: os.stat(os.path.join(i[0], x)).st_mtime)
+            to_delete = len(sorted_files) - limit
+            for file in sorted_files[:to_delete]:
+                try:
+                    os.remove(os.path.join(i[0], file))
+                except Exception as e:
+                    settings_logger.error(f"Not able to delete '{i[0]}" + "/" + f"{file}': {e}")
+                else:
+                    removed += 1
 
-    for root, dirs, files in os.walk('backups/'):
-        backups = [os.path.join(root, f) for f in files if f.endswith(".yml")]
-
+    return removed
 
 
 def create_edit_app_list(chat_data: dict) -> list:
