@@ -1,12 +1,7 @@
 ---
 allowed_users:
-  6784285433:
-    label: 'Demi'
+  123456789:
+    label: utente casuale
     permissions:
-      can_manage_backups: True
-      can_manage_users: False
-  7233636327:
-    label: 'Mia Madre'
-    permissions:
-      can_manage_backups: True
-      can_manage_users: False
+      can_manage_backups: false
+      can_manage_users: false

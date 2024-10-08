@@ -95,7 +95,18 @@ async def set_bot_data(appl: Application) -> None:
         }
 
     with open("config/allowed_ids.yml", "r") as f:
-        bd["users"]["allowed"] = yaml.safe_load(f)["allowed_users"]
+        d = yaml.safe_load(f)
+        if d["allowed_users"] is None:
+            d["allowed_users"] = {}
+        else:
+            bd["users"]["allowed"] = d["allowed_users"]
+
+    if "max_backups" not in bd["settings"]:
+        with open("config/first_boot.yml", "r", encoding='utf-8') as f:
+            try:
+                bd["settings"]["max_backups"] = yaml.safe_load(f)["settings"]["max_backups"]
+            except KeyError:
+                raise KeyError("Missing 'max_backups' setting in first_boot.yml. Add it under 'settings' section")
 
     # class of app.chat_data: mappingproxy(defaultdict(<class 'dict'>, {}))
     # noinspection PyUnresolvedReferences
@@ -229,9 +240,9 @@ async def catch_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    if os.path.exists("config/persistence"):
-        os.remove("config/persistence")
-        print("\n\ni  Persistence file removed\n\n")
+    # if os.path.exists("config/persistence"):
+    #     os.remove("config/persistence")
+    #     print("\n\ni  Persistence file removed\n\n")
 
     persistence = PicklePersistence(filepath="config/persistence")
     appl = (ApplicationBuilder().token(os.getenv("BOT_TOKEN")).persistence(persistence).
@@ -270,7 +281,10 @@ def main():
             ]
         },
         fallbacks=[CallbackQueryHandler(pattern="cancel_edit_settings", callback=settings.change_settings)],
-        name="default_settings_conv_handler"
+        name="default_settings_conv_handler",
+        map_to_parent={
+            ConversationState.TO_BE_ENDED: ConversationHandler.END
+        }
     )
 
     set_app_conv_handler = ConversationHandler(
@@ -320,7 +334,10 @@ def main():
         fallbacks=[
             CallbackQueryHandler(pattern="^back_to_settings$", callback=settings.send_menage_apps_menu)
         ],
-        allow_reentry=True  # per consentire di aggiungere un'altra app
+        allow_reentry=True,  # per consentire di aggiungere un'altra app
+        map_to_parent={
+            ConversationState.TO_BE_ENDED: ConversationHandler.END
+        }
     )
 
     edit_app_conv_handler = ConversationHandler(
@@ -339,7 +356,10 @@ def main():
         fallbacks=[
             CallbackQueryHandler(pattern="^back_to_settings$", callback=settings.send_menage_apps_menu)
         ],
-        allow_reentry=True  # per consentire di modificare un'altra app
+        allow_reentry=True,  # per consentire di modificare un'altra app
+        map_to_parent={
+            ConversationState.TO_BE_ENDED: ConversationHandler.END
+        }
     )
 
     delete_app_conv_handler = ConversationHandler(
@@ -360,6 +380,9 @@ def main():
             CallbackQueryHandler(pattern="^back_to_settings$", callback=settings.send_menage_apps_menu)
         ],
         allow_reentry=True,  # per consentire di rimuovere un'altra app o riselezionare l'app
+        map_to_parent={
+            ConversationState.TO_BE_ENDED: ConversationHandler.END
+        }
     )
 
     backup_restore_conv_handler = ConversationHandler(
@@ -391,7 +414,10 @@ def main():
         fallbacks=[
             CallbackQueryHandler(pattern="from_backup_restore", callback=settings.change_settings)
         ],
-        allow_reentry=True
+        allow_reentry=True,
+        map_to_parent={
+            ConversationState.TO_BE_ENDED: ConversationHandler.END
+        }
     )
 
     user_managing_conv_handler = ConversationHandler(
@@ -448,7 +474,10 @@ def main():
         fallbacks=[
             CallbackQueryHandler(pattern="^from_user_managing$", callback=settings.change_settings)
         ],
-        allow_reentry=True
+        allow_reentry=True,
+        map_to_parent={
+            ConversationState.TO_BE_ENDED: ConversationHandler.END
+        }
     )
 
     conv_handler2 = ConversationHandler(
