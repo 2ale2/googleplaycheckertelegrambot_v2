@@ -312,7 +312,7 @@ async def set_defaults(update: Update, context: CallbackContext):
             for permission in (np := context.chat_data["temp"]["new_permissions"]):
                 if np[permission] is None:
                     text = ("🔐 <b>Setting Default Permissions</b>\n\n"
-                            f"🔹 <b>{' '.join(w.capitalize() for w in permission.split("_"))}</b> "
+                            f"🔹 <b>{' '.join(w.capitalize() for w in permission.split('_'))}</b> "
                             f"– {np[permission]['permission_set_text']}\n\n"
                             f"⚠ Se torni indietro adesso, i permessi di default non verranno cambiati.")
                     keyboard = [
@@ -356,7 +356,7 @@ async def set_defaults(update: Update, context: CallbackContext):
             text += "🔸 <u>Default Permissions</u>\n"
 
             for permissions in (p := context.chat_data["permissions"]):
-                text += (f"     🔹<i>{' '.join(w.capitalize() for w in permissions.split("_"))}</i> – "
+                text += (f"     🔹<i>{' '.join(w.capitalize() for w in permissions.split('_'))}</i> – "
                          f"<code>{p[permissions]}</code>\n")
         
         text += "\n"
@@ -541,7 +541,7 @@ async def backup_and_restore(update: Update, context: CallbackContext):
             text += f"ℹ️ Hai {len(cd['backups'])} file(s) di backup.\n\n🔍 <b>Informazioni</b>\n\n"
             for backup in cd["backups"]:
                 b = cd["backups"][backup]
-                text += f"      {backup}. <code>{b["file_name"]}</code>\n"
+                text += f"      {backup}. <code>{b['file_name']}</code>\n"
             if removed:
                 text += "\n⚠️ Alcuni file di backup non sono più presenti. @Linxay potrebbe averli rimossi\n"
             text += ("\n🔸 Per <b>visualizzare</b>, <b>ripristinare</b> o <b>cancellare</b> un backup, "
@@ -1421,10 +1421,10 @@ async def list_users_permissions(update: Update, context: CallbackContext):
 
     if len(users["allowed"]) > 0:
         for user in users["allowed"]:
-            text += f"🔸 🏷 <i>{users["allowed"][user]['label']}</i> – <code>{user}</code>\n"
+            text += f"🔸 🏷 <i>{users['allowed'][user]['label']}</i> – <code>{user}</code>\n"
             for permission in users["allowed"][user]["permissions"]:
                 text += (f"     🔹<b>{' '.join(w.capitalize() for w in permission.split('_'))}</b>: "
-                         f"<code>{users["allowed"][user]["permissions"][permission]}</code>\n")
+                         f"<code>{users['allowed'][user]['permissions'][permission]}</code>\n")
             text += "\n\n"
 
         text += "ℹ <i>Proprietario</i> e <i>Padrone</i> hanno sempre tutti i permessi."
