@@ -367,7 +367,7 @@ async def initialize_chat_data(update: Update, context: CallbackContext):
 
                     text += "➡ <b>Default Permissions</b>\n"
                     for permission in (p := first_boot['settings']['default_permissions']):
-                        text += (f"    - <u>{' '.join(cp.capitalize() for cp in permission.split("_"))}</u>: "
+                        text += (f"    - <u>{' '.join(cp.capitalize() for cp in permission.split('_'))}</u>: "
                                  f"<code>{p[permission]}</code>\n\n")
 
                     text += f"➡ <b>Backup Massimi</b>: {first_boot['settings']['max_backups']}\n\n"
@@ -743,9 +743,10 @@ async def schedule_app_check(cd: dict, send_message: bool, update: Update, conte
 
         await send_message_with_typing_action(data=data, context=context)
 
+    next_check = datetime.now(timezone('Europe/Rome')) + ap['check_interval']['timedelta']
+
     bot_logger.info(f"Repeating Job for app {ap['app_name']} Scheduled Successfully "
-                    f"– Next Check at {(datetime.now(timezone('Europe/Rome'))
-                                        + ap['check_interval']['timedelta']).strftime('%d %b %Y - %H:%M:%S')}")
+                    f"– Next Check at {next_check.strftime('%d %b %Y - %H:%M:%S')}")
 
     if "editing" in cd:
         del context.chat_data["editing"]
