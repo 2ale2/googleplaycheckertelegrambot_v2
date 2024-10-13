@@ -41,7 +41,7 @@ async def set_defaults(update: Update, context: CallbackContext):
             text += "  🔹<u>Default Permissions</u>\n"
 
             for permissions in (p := context.chat_data["permissions"]):
-                text += (f"     🔸<i>{' '.join(w.capitalize() for w in permissions.split("_"))}</i> – "
+                text += (f"     🔸<i>{' '.join(w.capitalize() for w in permissions.split('_'))}</i> – "
                          f"<code>{p[permissions]}</code>\n")
 
         text += "\n 🔸 Confermi di voler cambiare queste impostazioni?"
