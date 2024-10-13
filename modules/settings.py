@@ -249,7 +249,7 @@ async def set_defaults(update: Update, context: CallbackContext):
 
             for permission in np:
                 if permission != "can_manage_users":
-                    text += (f"🔹 <b>{' '.join(w.capitalize() for w in permission.split("_"))}</b> "
+                    text += (f"🔹 <b>{' '.join(w.capitalize() for w in permission.split('_'))}</b> "
                              f"– {context.bot_data['settings']['permissions'][permission]['permission_set_text']}")
                 if not context.chat_data["first_boot"]:
                     text += f"\n\n⚠️ Se torni indietro adesso, i permessi di default non verranno cambiati."
