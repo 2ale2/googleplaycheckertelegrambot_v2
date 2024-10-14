@@ -56,6 +56,20 @@ source .venv/bin/activate
 
 sleep 1
 
+if ! command -v pip &> /dev/null; then
+    echo "pip non è installato. Vuoi installarlo? (y/n)"
+    read -r install_pip
+    if [[ $install_pip == "y" ]]; then
+        sudo apt install -y python3-pip || {
+            echo "Errore durante l'installazione di pip."
+            exit 1
+        }
+    else
+        echo "E' necessario avere pip per procedere."
+        exit 1
+    fi
+fi
+
 echo "
 
 === Installazione delle dipendenze ==="
